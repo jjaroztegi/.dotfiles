@@ -21,23 +21,28 @@ function Install-PowerShell {
         Write-Host "Checking for PowerShell 7..." -ForegroundColor Cyan
         if (Get-Command pwsh -ErrorAction SilentlyContinue) {
             Write-Host "PowerShell 7 is installed. Checking for updates..." -ForegroundColor Cyan
-            $currentVersion = (& pwsh -Command '$PSVersionTable.PSVersion.ToString()').Trim()
+
+            $currentVersion = (& pwsh -NoProfile -Command '$PSVersionTable.PSVersion.ToString()').Trim()
             $gitHubApiUrl = "https://api.github.com/repos/PowerShell/PowerShell/releases/latest"
             $latestReleaseInfo = Invoke-RestMethod -Uri $gitHubApiUrl
             $latestVersion = $latestReleaseInfo.tag_name.Trim('v')
+            
             if ([version]$currentVersion -lt [version]$latestVersion) {
                 Write-Host "Updating PowerShell 7 to version $latestVersion..." -ForegroundColor Yellow
                 Start-Process powershell.exe -ArgumentList "-NoProfile -Command winget upgrade --id Microsoft.PowerShell --accept-source-agreements --accept-package-agreements" -Wait -NoNewWindow
                 Write-Host "PowerShell 7 has been updated. Please restart your shell to reflect changes" -ForegroundColor Magenta
-            } else {
+            }
+            else {
                 Write-Host "Your PowerShell 7 is up to date." -ForegroundColor Green
             }
-        } else {
+        }
+        else {
             Write-Host "PowerShell 7 is not installed. Installing..." -ForegroundColor Yellow
             Start-Process powershell.exe -ArgumentList "-NoProfile -Command winget install --id Microsoft.PowerShell --accept-source-agreements --accept-package-agreements" -Wait -NoNewWindow
             Write-Host "PowerShell 7 has been installed." -ForegroundColor Green
         }
-    } catch {
+    }
+    catch {
         Write-Error "Failed to install or update PowerShell 7. Error: $_"
     }
 }
@@ -74,7 +79,8 @@ function Install-NerdFonts {
 
             Remove-Item -Path $extractPath -Recurse -Force
             Remove-Item -Path $zipFilePath -Force
-        } else {
+        }
+        else {
             Write-Host "Font ${FontDisplayName} already installed"
         }
     }
@@ -93,8 +99,8 @@ Install-PowerShell
 # Define profile directory and file path explicitly for PowerShell 7
 $profileDir = "$env:userprofile\Documents\PowerShell"
 $profileFile = Join-Path $profileDir "Microsoft.PowerShell_profile.ps1"
-$poshFile    = Join-Path $profileDir "oh-my-posh_cobalt2.omp.json"
-$configFile  = Join-Path $profileDir "powershell.config.json"
+$poshFile = Join-Path $profileDir "oh-my-posh_cobalt2.omp.json"
+$configFile = Join-Path $profileDir "powershell.config.json"
 
 # Profile creation or update
 if (!(Test-Path -Path $profileFile -PathType Leaf)) {
@@ -141,7 +147,8 @@ Install-NerdFonts -FontName "CascadiaCode" -FontDisplayName "CaskaydiaCove NF"
 # Final check
 if ((Test-Path -Path $profileFile) -and (winget list --name "OhMyPosh" -e | Select-String "OhMyPosh") -and ((New-Object System.Drawing.Text.InstalledFontCollection).Families.Name -contains "CaskaydiaCove NF")) {
     Write-Host "Setup completed successfully. Please restart your PowerShell session to apply changes."
-} else {
+}
+else {
     Write-Warning "Setup completed with errors. Please check the error messages above."
 }
 
@@ -172,7 +179,7 @@ catch {
 
 # winfetch Install
 try {
-    winget install -e --id nepnep.neofetch-win
+    choco install winfetch -y
     Write-Host "winfetch installed successfully."
 }
 catch {

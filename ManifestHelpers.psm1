@@ -11,15 +11,18 @@ function New-SymbolicLink {
     try {
         if (Test-Path $DestPath) {
             Write-Warning "$DestPath is already symlinked"
-        } else {
+        }
+        else {
             if ((Get-Item $SourcePath) -is [System.IO.DirectoryInfo]) {
                 New-Item -ItemType SymbolicLink -Path $DestPath -Target $SourcePath | Out-Null
-            } else {
+            }
+            else {
                 New-Item -ItemType SymbolicLink -Path $DestPath -Target $SourcePath | Out-Null
             }
             Write-Output "$DestPath has been symlinked"
         }
-    } catch {
+    }
+    catch {
         Write-Error "Failed to create symlink for $DestPath. Error: $_"
     }
 }
@@ -36,10 +39,12 @@ function Remove-SymbolicLink {
         if (Test-Path $DestPath) {
             Remove-Item -Path $DestPath -Force
             Write-Output "$DestPath has been unsymlinked"
-        } else {
+        }
+        else {
             Write-Warning "$DestPath doesn't exist"
         }
-    } catch {
+    }
+    catch {
         Write-Error "Failed to remove symlink for $DestPath. Error: $_"
     }
 }
@@ -55,15 +60,18 @@ function Copy-File {
     try {
         if (Test-Path $DestPath) {
             Write-Warning "$DestPath already exists. Skipping copy."
-        } else {
+        }
+        else {
             if ((Get-Item $SourcePath) -is [System.IO.DirectoryInfo]) {
                 Copy-Item -Path $SourcePath -Destination $DestPath -Recurse -Force
-            } else {
+            }
+            else {
                 Copy-Item -Path $SourcePath -Destination $DestPath -Force
             }
             Write-Output "$DestPath has been copied"
         }
-    } catch {
+    }
+    catch {
         Write-Error "Failed to copy $SourcePath to $DestPath. Error: $_"
     }
 }
@@ -77,10 +85,12 @@ function Remove-Copy {
         if (Test-Path $DestPath) {
             Remove-Item -Path $DestPath -Recurse -Force
             Write-Output "$DestPath has been removed"
-        } else {
+        }
+        else {
             Write-Warning "$DestPath doesn't exist"
         }
-    } catch {
+    }
+    catch {
         Write-Error "Failed to remove $DestPath. Error: $_"
     }
 }
@@ -111,7 +121,8 @@ function Deploy-Manifest {
                 }
             }
         }
-    } catch {
+    }
+    catch {
         Write-Error "Failed to deploy manifest $ManifestFile. Error: $_"
     }
 }
@@ -142,7 +153,8 @@ function Uninstall-Manifest {
                 }
             }
         }
-    } catch {
+    }
+    catch {
         Write-Error "Failed to undeploy manifest $ManifestFile. Error: $_"
     }
 }
