@@ -21,31 +21,35 @@ This repository contains configuration files and installation scripts to quickly
 
 ### Windows
 
-1. Install PowerShell (if not already installed):
-   ```powershell
-   Invoke-RestMethod "https://github.com/jjaroztegi/.dotfiles/raw/main/PowerShell_installer.ps1" | Invoke-Expression
-   ```
+1. Install PowerShell 7
 
-2. Clone the repository:
-   ```bash
+   *(Note: The `deploy.ps1` script will not work with PowerShell 5)*
+   ```powershell
+   irm "https://github.com/jjaroztegi/.dotfiles/raw/main/PowerShell_installer.ps1" | iex
+   ```
+   Make sure to select the `CaskaydiaCove Nerd Font Mono` and to set `PowerShell 7` as default in Windows Terminal settings
+
+
+2. Open PowerShell 7 and clone the repository
+   ```powershell
    git clone https://github.com/jjaroztegi/.dotfiles.git
    cd .dotfiles
    ```
 
-3. Deploy dotfiles:
+3. Deploy dotfiles
    ```powershell
    .\deploy.ps1
    ```
 
 ### Linux/macOS
 
-1. Clone the repository:
+1. Clone the repository
    ```bash
    git clone https://github.com/jjaroztegi/.dotfiles.git
    cd .dotfiles
    ```
 
-2. Deploy dotfiles:
+2. Deploy dotfiles
    ```bash
    ./deploy.sh
    ```

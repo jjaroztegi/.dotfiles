@@ -118,6 +118,8 @@ else {
     try {
         Get-Item -Path $profileFile | Move-Item -Destination (Join-Path $profileDir "oldprofile.ps1") -Force
         Invoke-RestMethod https://github.com/jjaroztegi/.dotfiles/raw/main/Powershell/Microsoft.PowerShell_profile.ps1 -OutFile $profileFile
+        Invoke-RestMethod https://github.com/jjaroztegi/.dotfiles/raw/main/Powershell/oh-my-posh_cobalt2.omp.json -OutFile $poshFile
+        Invoke-RestMethod https://github.com/jjaroztegi/.dotfiles/raw/main/Powershell/powershell.config.json -OutFile $configFile
         Write-Host "The profile @ [$profileFile] has been created and old profile renamed to oldprofile.ps1."
     }
     catch {
