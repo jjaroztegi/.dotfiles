@@ -391,11 +391,12 @@ $scriptblock = {
 }
 Register-ArgumentCompleter -Native -CommandName dotnet -ScriptBlock $scriptblock
 
-
 # Set Theme
 $profileDir = Split-Path -Parent $PROFILE
 oh-my-posh init pwsh --config "$profileDir\oh-my-posh_cobalt2.omp.json" | Invoke-Expression
 
+# Set up zoxide
+Invoke-Expression (& { (zoxide init --cmd cd powershell | Out-String) })
 Set-Alias -Name z -Value __zoxide_z -Option AllScope -Scope Global -Force
 Set-Alias -Name zi -Value __zoxide_zi -Option AllScope -Scope Global -Force
 
