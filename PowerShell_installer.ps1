@@ -87,9 +87,14 @@ if (-not (Test-InternetConnection)) {
     break
 }
 
+# Install or update PowerShell 7
+Install-PowerShell
+
 # Define profile directory and file path explicitly for PowerShell 7
 $profileDir = "$env:userprofile\Documents\PowerShell"
 $profileFile = Join-Path $profileDir "Microsoft.PowerShell_profile.ps1"
+$poshFile    = Join-Path $profileDir "oh-my-posh_cobalt2.omp.json"
+$configFile  = Join-Path $profileDir "powershell.config.json"
 
 # Profile creation or update
 if (!(Test-Path -Path $profileFile -PathType Leaf)) {
@@ -100,7 +105,10 @@ if (!(Test-Path -Path $profileFile -PathType Leaf)) {
         }
 
         Invoke-RestMethod https://github.com/jjaroztegi/.dotfiles/raw/main/Powershell/Microsoft.PowerShell_profile.ps1 -OutFile $profileFile
-        Write-Host "The profile @ [$profileFile] has been created."
+        Invoke-RestMethod https://github.com/jjaroztegi/.dotfiles/raw/main/Powershell/oh-my-posh_cobalt2.omp.json -OutFile $poshFile
+        Invoke-RestMethod https://github.com/jjaroztegi/.dotfiles/raw/main/Powershell/powershell.config.json -OutFile $configFile
+
+        Write-Host "The profile and configuration files have been created in [$profileDir]."
     }
     catch {
         Write-Error "Failed to create or update the profile. Error: $_"
