@@ -1,0 +1,14 @@
+[user]
+	name = juanjo
+	email = juanjo@aroztegi.com
+[init]
+	defaultBranch = main
+[pull]
+	rebase = true
+[core]
+	editor = code --wait
+	excludesfile = ~/.gitignore
+[alias]
+    tree = log --graph --decorate --oneline --parents --all
+[url "git@github.com:"]
+	insteadOf = https://github.com/
