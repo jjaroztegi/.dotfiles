@@ -5,6 +5,11 @@
 	defaultBranch = main
 [pull]
 	rebase = true
+[push]
+    default = current
+    autoSetupRemote = true
+[rebase]
+    autostash = true
 [core]
 	editor = code --wait
 	excludesfile = ~/.gitignore
@@ -12,3 +17,11 @@
     tree = log --graph --decorate --oneline --parents --all
 [url "git@github.com:"]
 	insteadOf = https://github.com/
+[diff]
+    tool = default-difftool
+[difftool "default-difftool"]
+    cmd = code --wait --diff $LOCAL $REMOTE
+[merge]
+    tool = code
+[mergetool "code"]
+    cmd = code --wait --merge $REMOTE $LOCAL $BASE $MERGED
