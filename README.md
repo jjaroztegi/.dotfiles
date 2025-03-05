@@ -1,6 +1,6 @@
 # .dotfiles
 
-A repository of my personal dotfiles for Windows and Linux/macOS.
+A repository of my personal dotfiles for Windows and Linux/MacOS.
 
 ## Overview
 
@@ -10,11 +10,12 @@ This repository contains configuration files and installation scripts to quickly
 
 ```
 .
-├── deploy.ps1                  # Windows deployment script
-├── deploy.sh                   # Unix deployment script
-├── MANIFEST.unix               # Configuration manifest for Unix systems
-├── MANIFEST.windows            # Configuration manifest for Windows systems
-└── PowerShell_installer.ps1    # PowerShell installation script
+├── deploy.ps1                   # Windows deployment script
+├── deploy.sh                    # Unix deployment script
+├── MANIFEST/                    # Folder containing manifest files
+│   ├── MANIFEST.unix            # Configuration manifest for Unix systems
+│   └── MANIFEST.windows         # Configuration manifest for Windows systems
+└── PowerShell_installer.ps1     # PowerShell installation script
 ```
 
 ## Quick Start
@@ -65,17 +66,18 @@ This dotfiles manager uses a manifest-based approach to manage configuration fil
 
 Each line in a manifest file has the following format:
 ```
-filename|operation
+filename|operation|destination
 ```
 
 Where:
 - `filename`: The file to be processed
 - `operation`: The operation to perform (symlink, copy)
+- `destination`: The destination folder/file to which the folder/file will be symlinked or copied.
 
 Example:
 ```
-.gitconfig|symlink|
-.config|copy|
+Unix/.gitconfig|symlink|~/.gitconfig
+Windows/.config|copy|
 ```
 
 ## Customization
