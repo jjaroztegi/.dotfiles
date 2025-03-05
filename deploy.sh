@@ -2,26 +2,62 @@
 
 set -e
 
-SCRIPT_DIR="$( cd "$( dirname "$BASH_SOURCE[0]" )" && pwd )"
+SCRIPT_DIR="$(cd "$(dirname "$BASH_SOURCE[0]")" && pwd)"
 
 symlinkFile() {
-    filename="$SCRIPT_DIR/$1"
-    destination="$HOME/$2/$1"
+    source_path="$SCRIPT_DIR/$1"
+
+    if [ -n "$2" ]; then
+        destination="$2"
+    else
+        destination="$HOME/$(basename "$1")"
+    fi
+
+    destination="${destination/#\~/$HOME}"
+    display_destination="${destination/#$HOME/~}"
 
     mkdir -p $(dirname "$destination")
 
     if [ -L "$destination" ]; then
-        echo "[WARNING] $filename already symlinked"
+        echo "[WARNING] $display_destination already symlinked"
         return
     fi
 
     if [ -e "$destination" ]; then
-        echo "[ERROR] $destination exists but it's not a symlink. Please fix that manually"
+        echo "[ERROR] $display_destination exists but it's not a symlink. Please fix that manually"
         return
     fi
 
-    ln -s "$filename" "$destination"
-    echo "[OK] $filename -> $destination"
+    ln -s "$source_path" "$destination"
+    echo "[OK] $source_path -> $display_destination"
+}
+
+copyFile() {
+    source_path="$SCRIPT_DIR/$1"
+
+    if [ -n "$2" ]; then
+        destination="$2"
+    else
+        destination="$HOME/$(basename "$1")"
+    fi
+
+    destination="${destination/#\~/$HOME}"
+    display_destination="${destination/#$HOME/~}"
+
+    mkdir -p $(dirname "$destination")
+
+    if [ -e "$destination" ]; then
+        echo "[WARNING] $display_destination already exists"
+        return
+    fi
+
+    if [ -d "$source_path" ]; then
+        cp -r "$source_path" "$destination"
+        echo "[OK] Directory $source_path -> $display_destination"
+    else
+        cp "$source_path" "$destination"
+        echo "[OK] $source_path -> $display_destination"
+    fi
 }
 
 deployManifest() {
@@ -35,15 +71,19 @@ deployManifest() {
         destination=$(echo $row | cut -d \| -f 3)
 
         case $operation in
-            symlink)
-                symlinkFile $filename $destination
-                ;;
+        symlink)
+            symlinkFile $filename $destination
+            ;;
 
-            *)
-                echo "[WARNING] Unknown operation $operation. Skipping..."
-                ;;
+        copy)
+            copyFile $filename $destination
+            ;;
+
+        *)
+            echo "[WARNING] Unknown operation $operation. Skipping..."
+            ;;
         esac
     done
 }
 
-deployManifest "MANIFEST.unix"
+deployManifest "Manifest/MANIFEST.unix"

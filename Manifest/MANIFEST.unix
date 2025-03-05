@@ -1,0 +1,5 @@
+Unix/.gitconfig|symlink|
+Unix/.gitignore|symlink|
+Unix/.p10k.zsh|symlink|
+Unix/btop/btop.conf|symlink|~/.config/btop/btop.conf
+Unix/.zshrc|copy|

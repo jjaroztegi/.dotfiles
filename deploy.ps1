@@ -10,4 +10,4 @@ else {
     Write-Warning "HOME environment variable already exists. Not modifying the existing value."
 }
 
-Deploy-Manifest MANIFEST.windows
+Deploy-Manifest Manifest/MANIFEST.windows

@@ -1,4 +1,0 @@
-.config|copy|
-.gitconfig|symlink|
-.gitignore|symlink|
-.wslconfig|symlink|

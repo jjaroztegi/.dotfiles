@@ -1,0 +1,4 @@
+Windows/.config|copy|
+Windows/.gitconfig|symlink|
+Windows/.gitignore|symlink|
+Windows/.wslconfig|symlink|
