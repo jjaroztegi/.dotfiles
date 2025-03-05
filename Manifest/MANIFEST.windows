@@ -1,4 +1,4 @@
-Windows/.config|copy|
+Windows/winfetch/config.ps1|copy|~/.config/winfetch/config.ps1
 Windows/.gitconfig|symlink|
 Windows/.gitignore|symlink|
 Windows/.wslconfig|symlink|
