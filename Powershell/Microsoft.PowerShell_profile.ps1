@@ -11,6 +11,10 @@ $ChocolateyProfile = "$env:ChocolateyInstall\helpers\chocolateyProfile.psm1"
 if (Test-Path($ChocolateyProfile)) {
     Import-Module "$ChocolateyProfile"
 }
+$PSFzfModule = "PSFzf"
+if (Get-Module -ListAvailable -Name $PSFzfModule) {
+    Import-Module -Name PSFzf
+}
 
 function Sync-Profile {
     try {
@@ -208,6 +212,7 @@ function unzip ($file) {
     $fullFile = Get-ChildItem -Path $pwd -Filter $file | ForEach-Object { $_.FullName }
     Expand-Archive -Path $fullFile -DestinationPath $pwd
 }
+
 function hb {
     if ($args.Length -eq 0) {
         Write-Error "No file path specified."
@@ -378,16 +383,16 @@ $PSReadLineOptions = @{
 Set-PSReadLineOption @PSReadLineOptions
 
 # Custom key handlers
-Set-PSReadLineKeyHandler -Key UpArrow -Function HistorySearchBackward
-Set-PSReadLineKeyHandler -Key DownArrow -Function HistorySearchForward
-Set-PSReadLineKeyHandler -Key Tab -Function MenuComplete
-Set-PSReadLineKeyHandler -Chord 'Ctrl+d' -Function DeleteChar
-Set-PSReadLineKeyHandler -Chord 'Ctrl+w' -Function BackwardDeleteWord
-Set-PSReadLineKeyHandler -Chord 'Alt+d' -Function DeleteWord
-Set-PSReadLineKeyHandler -Chord 'Ctrl+LeftArrow' -Function BackwardWord
+Set-PSReadLineKeyHandler -Key   UpArrow           -Function HistorySearchBackward
+Set-PSReadLineKeyHandler -Key   DownArrow         -Function HistorySearchForward
+Set-PSReadLineKeyHandler -Key   Tab               -Function MenuComplete
+Set-PSReadLineKeyHandler -Chord 'Ctrl+d'          -Function DeleteChar
+Set-PSReadLineKeyHandler -Chord 'Ctrl+w'          -Function BackwardDeleteWord
+Set-PSReadLineKeyHandler -Chord 'Alt+d'           -Function DeleteWord
+Set-PSReadLineKeyHandler -Chord 'Ctrl+LeftArrow'  -Function BackwardWord
 Set-PSReadLineKeyHandler -Chord 'Ctrl+RightArrow' -Function ForwardWord
-Set-PSReadLineKeyHandler -Chord 'Ctrl+z' -Function Undo
-Set-PSReadLineKeyHandler -Chord 'Ctrl+y' -Function Redo
+Set-PSReadLineKeyHandler -Chord 'Ctrl+z'          -Function Undo
+Set-PSReadLineKeyHandler -Chord 'Ctrl+y'          -Function Redo
 
 # Custom functions for PSReadLine
 Set-PSReadLineOption -AddToHistoryHandler {
@@ -396,6 +401,9 @@ Set-PSReadLineOption -AddToHistoryHandler {
     $hasSensitive = $sensitive | Where-Object { $line -match $_ }
     return ($null -eq $hasSensitive)
 }
+
+# Custom key bindings for PSFzf
+Set-PsFzfOption -PSReadlineChordProvider 'Ctrl+t' -PSReadlineChordReverseHistory 'Ctrl+r' -PSReadlineChordSetLocation 'Alt+c'
 
 # Improved prediction settings
 Set-PSReadLineOption -PredictionSource HistoryAndPlugin

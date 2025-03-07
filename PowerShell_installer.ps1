@@ -168,6 +168,23 @@ catch {
     Write-Error "Failed to install Terminal Icons module. Error: $_"
 }
 
+# fzf Install
+try {
+    choco install fzf -y
+    Write-Host "fzf installed successfully."
+}
+catch {
+    Write-Error "Failed to install fzf. Error: $_"
+}
+# PSFzf Install
+try {
+    Install-Module -Name PSFzf -Force
+    Write-Host "PSFzf installed successfully."
+}
+catch {
+    Write-Error "Failed to install PSFzf. Error: $_"
+}
+
 # zoxide Install
 try {
     winget install -e --id ajeetdsouza.zoxide
