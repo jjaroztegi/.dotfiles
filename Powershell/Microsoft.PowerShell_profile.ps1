@@ -246,13 +246,14 @@ function grep {
     param($regex, $dir)
     if ($dir) {
         Get-ChildItem $dir | Select-String $regex
-        return
     }
-    $input | Where-Object { $_.Verb -match $regex }
+    else {
+        $input | Select-String $regex
+    }
 }
 
 function df {
-    get-volume
+    Get-Volume
 }
 
 function sed($file, $find, $replace) {
@@ -283,6 +284,42 @@ function head {
 function tail {
     param($Path, $n = 10, [switch]$f = $false)
     Get-Content $Path -Tail $n -Wait:$f
+}
+
+function du {
+    param(
+        [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
+        [string[]]$Path
+    )
+
+    process {
+        foreach ($p in $Path) {
+            if (-not (Test-Path -Path $p)) {
+                Write-Error "Cannot access '$p': No such file or directory"
+                continue
+            }
+
+            $bytes = (Get-ChildItem -Path $p -Recurse -Force -ErrorAction SilentlyContinue |
+                Measure-Object -Property Length -Sum).Sum
+
+            if ($null -eq $bytes) {
+                $bytes = 0
+            }
+
+            if ($bytes -ge 1GB) {
+                "{0:N2} GB`t{1}" -f ($bytes / 1GB), $p
+            }
+            elseif ($bytes -ge 1MB) {
+                "{0:N2} MB`t{1}" -f ($bytes / 1MB), $p
+            }
+            elseif ($bytes -ge 1KB) {
+                "{0:N2} KB`t{1}" -f ($bytes / 1KB), $p
+            }
+            else {
+                "{0} Bytes`t{1}" -f $bytes, $p
+            }
+        }
+    }
 }
 
 # Quick File Creation
