@@ -48,15 +48,15 @@ function Copy-File {
     try {
         $parentDir = Split-Path $DestPath -Parent
         if ($parentDir -and -not (Test-Path $parentDir)) {
-            New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
+            New-Item -ItemType Directory -Path $parentDir -Force -ErrorAction Stop | Out-Null
         }
         if (Test-Path $DestPath) {
             Write-Warning "$DestPath already exists. Skipping."
         } else {
-            if ((Get-Item $SourcePath) -is [System.IO.DirectoryInfo]) {
-                Copy-Item -Path $SourcePath -Destination $DestPath -Recurse -Force
+            if ((Get-Item $SourcePath -ErrorAction Stop) -is [System.IO.DirectoryInfo]) {
+                Copy-Item -Path $SourcePath -Destination $DestPath -Recurse -Force -ErrorAction Stop
             } else {
-                Copy-Item -Path $SourcePath -Destination $DestPath -Force
+                Copy-Item -Path $SourcePath -Destination $DestPath -Force -ErrorAction Stop
             }
             Write-Output "$DestPath has been copied"
         }
