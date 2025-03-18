@@ -396,22 +396,22 @@ function cpy { Set-Clipboard $args[0] }
 function pst { Get-Clipboard }
 
 # Enhanced PowerShell Experience
-# Enhanced PSReadLine Configuration
+# Enhanced PSReadLine Configuration with Gruber Darker Theme
 $PSReadLineOptions = @{
-    EditMode                      = 'Windows'
+    EditMode                      = 'Emacs'
     HistoryNoDuplicates           = $true
     HistorySearchCursorMovesToEnd = $true
     Colors                        = @{
-        Command   = '#87CEEB'  # SkyBlue (pastel)
-        Parameter = '#98FB98'  # PaleGreen (pastel)
-        Operator  = '#FFB6C1'  # LightPink (pastel)
-        Variable  = '#DDA0DD'  # Plum (pastel)
-        String    = '#FFDAB9'  # PeachPuff (pastel)
-        Number    = '#B0E0E6'  # PowderBlue (pastel)
-        Type      = '#F0E68C'  # Khaki (pastel)
-        Comment   = '#D3D3D3'  # LightGray (pastel)
-        Keyword   = '#8367c7'  # Violet (pastel)
-        Error     = '#FF6347'  # Tomato (keeping it close to red for visibility)
+        Command   = '#E4E4E4'
+        Parameter = '#73D936'
+        Operator  = '#95A6C8'
+        Variable  = '#A8A9A7'
+        String    = '#FFDD33'
+        Number    = '#FF5757'
+        Type      = '#E4E4E4'
+        Comment   = '#515151'
+        Keyword   = '#9E94C8'
+        Error     = '#F43841'
     }
     PredictionSource              = 'History'
     PredictionViewStyle           = 'ListView'
