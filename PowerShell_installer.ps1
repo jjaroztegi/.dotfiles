@@ -117,17 +117,23 @@ function Install-NerdFonts {
     param (
         [string]$FontName = "Iosevka",
         [string]$FontDisplayName = "Iosevka NF",
-        [string]$Version = "3.3.0"
+        [string]$FontMonoName = "Iosevka Nerd Font Mono",
+        [string]$Version = "3.3.0",
+        [int]$FontSize = 14
     )
 
     try {
         [void] [System.Reflection.Assembly]::LoadWithPartialName("System.Drawing")
         $fontFamilies = (New-Object System.Drawing.Text.InstalledFontCollection).Families.Name
+        
+        Write-Host "Checking if $FontDisplayName is installed..." -ForegroundColor Cyan
+        
         if ($fontFamilies -notcontains "${FontDisplayName}") {
             $fontZipUrl = "https://github.com/ryanoasis/nerd-fonts/releases/download/v${Version}/${FontName}.zip"
             $zipFilePath = "$env:TEMP\${FontName}.zip"
             $extractPath = "$env:TEMP\${FontName}"
 
+            Write-Host "Downloading $FontDisplayName from $fontZipUrl..." -ForegroundColor Cyan
             $webClient = New-Object System.Net.WebClient
             $webClient.DownloadFileAsync((New-Object System.Uri($fontZipUrl)), $zipFilePath)
 
@@ -135,6 +141,7 @@ function Install-NerdFonts {
                 Start-Sleep -Seconds 2
             }
 
+            Write-Host "Extracting font files..." -ForegroundColor Cyan
             Expand-Archive -Path $zipFilePath -DestinationPath $extractPath -Force
             $destination = (New-Object -ComObject Shell.Application).Namespace(0x14)
             Get-ChildItem -Path $extractPath -Recurse -Filter "*.ttf" | ForEach-Object {
@@ -143,15 +150,46 @@ function Install-NerdFonts {
                 }
             }
 
+            Write-Host "Cleaning up temporary files..." -ForegroundColor Cyan
             Remove-Item -Path $extractPath -Recurse -Force
             Remove-Item -Path $zipFilePath -Force
+            
+            Write-Host "Font $FontDisplayName installed successfully" -ForegroundColor Green
         }
         else {
-            Write-Host "Font ${FontDisplayName} already installed"
+            Write-Host "Font $FontDisplayName already installed" -ForegroundColor Yellow
+        }
+
+        # Set Iosevka NF Mono as default font in Windows Terminal
+        $settingsPath = "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json"
+        
+        if (Test-Path $settingsPath) {
+            Write-Host "Configuring Windows Terminal to use $FontMonoName..." -ForegroundColor Cyan
+            $settings = Get-Content -Path $settingsPath -Raw | ConvertFrom-Json
+            
+            if (-not $settings.PSObject.Properties.Name -contains "profiles") {
+                $settings | Add-Member -Type NoteProperty -Name "profiles" -Value @{}
+            }
+            
+            if (-not $settings.profiles.PSObject.Properties.Name -contains "defaults") {
+                $settings.profiles | Add-Member -Type NoteProperty -Name "defaults" -Value @{}
+            }
+            
+            $fontConfig = @{
+                face = $FontMonoName
+                size = $FontSize
+            }
+            $settings.profiles.defaults | Add-Member -Type NoteProperty -Name "font" -Value $fontConfig -Force
+            
+            $settings | ConvertTo-Json -Depth 20 | Set-Content -Path $settingsPath
+            Write-Host "Set $FontMonoName (size $FontSize) as default font in Windows Terminal" -ForegroundColor Green
+        }
+        else {
+            Write-Warning "Windows Terminal settings file not found. Font installed but not set as default."
         }
     }
     catch {
-        Write-Error "Failed to download or install ${FontDisplayName} font. Error: $_"
+        Write-Error "Failed to install or configure ${FontDisplayName}. Error: $_"
     }
 }
 
