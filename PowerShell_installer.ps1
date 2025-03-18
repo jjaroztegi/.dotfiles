@@ -49,9 +49,9 @@ function Install-PowerShell {
 
 function Install-NerdFonts {
     param (
-        [string]$FontName = "CascadiaCode",
-        [string]$FontDisplayName = "CaskaydiaCove NF",
-        [string]$Version = "3.2.1"
+        [string]$FontName = "Iosevka",
+        [string]$FontDisplayName = "Iosevka NF",
+        [string]$Version = "3.3.0"
     )
 
     try {
@@ -142,10 +142,10 @@ catch {
 }
 
 # Font Install
-Install-NerdFonts -FontName "CascadiaCode" -FontDisplayName "CaskaydiaCove NF"
+Install-NerdFonts -FontName "Iosevka" -FontDisplayName "Iosevka NF"
 
 # Final check
-if ((Test-Path -Path $profileFile) -and (winget list --name "OhMyPosh" -e | Select-String "OhMyPosh") -and ((New-Object System.Drawing.Text.InstalledFontCollection).Families.Name -contains "CaskaydiaCove NF")) {
+if ((Test-Path -Path $profileFile) -and (winget list --name "OhMyPosh" -e | Select-String "OhMyPosh") -and ((New-Object System.Drawing.Text.InstalledFontCollection).Families.Name -contains "Iosevka NF")) {
     Write-Host "Setup completed successfully. Please restart your PowerShell session to apply changes."
 }
 else {
@@ -176,6 +176,7 @@ try {
 catch {
     Write-Error "Failed to install fzf. Error: $_"
 }
+
 # PSFzf Install
 try {
     Install-Module -Name PSFzf -Force
