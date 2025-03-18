@@ -47,6 +47,72 @@ function Install-PowerShell {
     }
 }
 
+function Install-WindowsTerminalTheme {
+    param (
+        [string]$ThemeUrl = "https://github.com/mbadolato/iTerm2-Color-Schemes/raw/master/windowsterminal/gruber-darker.json",
+        [string]$ThemeName = "gruber-darker"
+    )
+
+    try {
+        Write-Host "Installing Windows Terminal theme: $ThemeName..." -ForegroundColor Cyan
+        
+        $settingsPath = "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json"
+        
+        if (-not (Test-Path $settingsPath)) {
+            Write-Warning "Windows Terminal settings file not found. Make sure Windows Terminal is installed."
+            return
+        }
+        
+        Copy-Item -Path $settingsPath -Destination "$settingsPath.backup" -Force
+        Write-Host "Created backup of Windows Terminal settings at $settingsPath.backup" -ForegroundColor Green
+        
+        $themeContent = Invoke-RestMethod -Uri $ThemeUrl
+        $settings = Get-Content -Path $settingsPath -Raw | ConvertFrom-Json
+        
+        if (-not $settings.PSObject.Properties.Name -contains "schemes") {
+            $settings | Add-Member -Type NoteProperty -Name "schemes" -Value @()
+        }
+        
+        $themeExists = $settings.schemes | Where-Object { $_.name -eq $ThemeName }
+        
+        if (-not $themeExists) {
+            $settings.schemes += $themeContent
+            # Save after adding the scheme
+            $settings | ConvertTo-Json -Depth 20 | Set-Content -Path $settingsPath
+            Write-Host "Theme '$ThemeName' has been added to Windows Terminal" -ForegroundColor Green
+            
+            # Reload settings to ensure we have the latest structure
+            $settings = Get-Content -Path $settingsPath -Raw | ConvertFrom-Json
+            
+            # Set as default for all profiles
+            if (-not $settings.PSObject.Properties.Name -contains "profiles") {
+                $settings | Add-Member -Type NoteProperty -Name "profiles" -Value @{}
+            }
+            
+            if (-not $settings.profiles.PSObject.Properties.Name -contains "defaults") {
+                $settings.profiles | Add-Member -Type NoteProperty -Name "defaults" -Value @{}
+            }
+            
+            $settings.profiles.defaults | Add-Member -Type NoteProperty -Name "colorScheme" -Value $ThemeName -Force
+            
+            $settings | ConvertTo-Json -Depth 20 | Set-Content -Path $settingsPath
+            Write-Host "Theme '$ThemeName' set as default for all profiles" -ForegroundColor Green
+        }
+        else {
+            Write-Host "Theme '$ThemeName' already exists in Windows Terminal settings" -ForegroundColor Yellow
+            # Check if it's already the default, if not, set it
+            if ($settings.profiles.defaults.colorScheme -ne $ThemeName) {
+                $settings.profiles.defaults | Add-Member -Type NoteProperty -Name "colorScheme" -Value $ThemeName -Force
+                $settings | ConvertTo-Json -Depth 20 | Set-Content -Path $settingsPath
+                Write-Host "Theme '$ThemeName' set as default for all profiles" -ForegroundColor Green
+            }
+        }
+    }
+    catch {
+        Write-Error "Failed to install Windows Terminal theme. Error: $_"
+    }
+}
+
 function Install-NerdFonts {
     param (
         [string]$FontName = "Iosevka",
@@ -202,4 +268,12 @@ try {
 }
 catch {
     Write-Error "Failed to install winfetch. Error: $_"
+}
+
+# Windows Terminal Theme Install
+try {
+    Install-WindowsTerminalTheme
+}
+catch {
+    Write-Error "Failed to install Windows Terminal theme. Error: $_"
 }
