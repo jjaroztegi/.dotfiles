@@ -27,11 +27,11 @@ This repository contains configuration files and installation scripts to quickly
 > [!NOTE]  
 > This script sets the "gruber-darker" theme as the default in Windows Terminal. If Windows Terminal isn't installed, it shows a warning but won't fail.
 
-   ```powershell
-   irm "https://github.com/jjaroztegi/.dotfiles/raw/main/PowerShell_installer.ps1" | iex
-   ```
+```powershell
+irm "https://github.com/jjaroztegi/.dotfiles/raw/main/PowerShell_installer.ps1" | iex
+```
 
-   Make sure to select the `Iosevka Nerd Font Mono` and to set `PowerShell 7` as default in Windows Terminal settings
+Make sure to set `PowerShell 7` as default profile in Windows Terminal settings
 
 2. Open PowerShell 7 and clone the repository
 
@@ -45,9 +45,9 @@ This repository contains configuration files and installation scripts to quickly
 > [!IMPORTANT]  
 > The `deploy.ps1` script will not work with PowerShell 5
 
-   ```powershell
-   .\deploy.ps1
-   ```
+```powershell
+.\deploy.ps1
+```
 
 ### Linux/macOS
 
