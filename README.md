@@ -24,20 +24,27 @@ This repository contains configuration files and installation scripts to quickly
 
 1. Install PowerShell 7
 
-   *(Note: The `deploy.ps1` script will not work with PowerShell 5)*
+> [!NOTE]  
+> This script sets the "gruber-darker" theme as the default in Windows Terminal. If Windows Terminal isn't installed, it shows a warning but won't fail.
+
    ```powershell
    irm "https://github.com/jjaroztegi/.dotfiles/raw/main/PowerShell_installer.ps1" | iex
    ```
-   Make sure to select the `CaskaydiaCove Nerd Font Mono` and to set `PowerShell 7` as default in Windows Terminal settings
 
+   Make sure to select the `Iosevka Nerd Font Mono` and to set `PowerShell 7` as default in Windows Terminal settings
 
 2. Open PowerShell 7 and clone the repository
+
    ```powershell
    git clone https://github.com/jjaroztegi/.dotfiles.git
    cd .dotfiles
    ```
 
 3. Deploy dotfiles
+
+> [!IMPORTANT]  
+> The `deploy.ps1` script will not work with PowerShell 5
+
    ```powershell
    .\deploy.ps1
    ```
@@ -45,6 +52,7 @@ This repository contains configuration files and installation scripts to quickly
 ### Linux/macOS
 
 1. Clone the repository
+
    ```bash
    git clone https://github.com/jjaroztegi/.dotfiles.git
    cd .dotfiles
@@ -65,16 +73,19 @@ This dotfiles manager uses a manifest-based approach to manage configuration fil
 ### Manifest Format
 
 Each line in a manifest file has the following format:
+
 ```
 filename|operation|destination
 ```
 
 Where:
+
 - `filename`: The file to be processed
 - `operation`: The operation to perform (symlink, copy)
 - `destination`: The destination folder/file to which the folder/file will be symlinked or copied.
 
 Example:
+
 ```
 Unix/.gitconfig|symlink|~/.gitconfig
 Windows/.config|copy|

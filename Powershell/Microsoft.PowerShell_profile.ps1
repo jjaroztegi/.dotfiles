@@ -490,7 +490,11 @@ $($PSStyle.Foreground.Yellow)=======================$($PSStyle.Reset)
 
 $($PSStyle.Foreground.Green)Update-PowerShell$($PSStyle.Reset) - Checks for the latest PowerShell release and updates if a new version is available.
 
+$($PSStyle.Foreground.Green)Sync-Profile$($PSStyle.Reset) - Updates the current user's PowerShell profile from the GitHub repository.
+
 $($PSStyle.Foreground.Green)Edit-Profile$($PSStyle.Reset) - Opens the current user's profile for editing using the configured editor.
+
+$($PSStyle.Foreground.Green)Clear-Cache$($PSStyle.Reset) - Clears Windows prefetch, temp files, and browser cache.
 
 $($PSStyle.Foreground.Green)touch$($PSStyle.Reset) <file> - Creates a new empty file.
 
@@ -499,6 +503,10 @@ $($PSStyle.Foreground.Green)ff$($PSStyle.Reset) <name> - Finds files recursively
 $($PSStyle.Foreground.Green)Get-PubIP$($PSStyle.Reset) - Retrieves the public IP address of the machine.
 
 $($PSStyle.Foreground.Green)winutil$($PSStyle.Reset) - Runs the latest WinUtil full-release script from Chris Titus Tech.
+
+$($PSStyle.Foreground.Green)admin$($PSStyle.Reset) [command] - Opens a new terminal with admin privileges, optionally running a command.
+
+$($PSStyle.Foreground.Green)sudo$($PSStyle.Reset) <command> - Alias for admin, runs commands with elevated privileges.
 
 $($PSStyle.Foreground.Green)uptime$($PSStyle.Reset) - Displays the system uptime.
 
@@ -524,17 +532,25 @@ $($PSStyle.Foreground.Green)pgrep$($PSStyle.Reset) <name> - Lists processes by n
 
 $($PSStyle.Foreground.Green)head$($PSStyle.Reset) <path> [n] - Displays the first n lines of a file (default 10).
 
-$($PSStyle.Foreground.Green)tail$($PSStyle.Reset) <path> [n] - Displays the last n lines of a file (default 10).
+$($PSStyle.Foreground.Green)tail$($PSStyle.Reset) <path> [n] [-f] - Displays the last n lines of a file (default 10). Use -f to continuously monitor.
+
+$($PSStyle.Foreground.Green)du$($PSStyle.Reset) <path> - Shows disk usage of the specified path(s).
 
 $($PSStyle.Foreground.Green)nf$($PSStyle.Reset) <name> - Creates a new file with the specified name.
 
 $($PSStyle.Foreground.Green)mkcd$($PSStyle.Reset) <dir> - Creates and changes to a new directory.
 
+$($PSStyle.Foreground.Green)trash$($PSStyle.Reset) <path> - Moves a file or directory to the Recycle Bin instead of permanently deleting.
+
 $($PSStyle.Foreground.Green)docs$($PSStyle.Reset) - Changes the current directory to the user's Documents folder.
 
 $($PSStyle.Foreground.Green)dtop$($PSStyle.Reset) - Changes the current directory to the user's Desktop folder.
 
-$($PSStyle.Foreground.Green)ep$($PSStyle.Reset) - Opens the profile for editing.
+$($PSStyle.Foreground.Green)dev$($PSStyle.Reset) - Changes the current directory to D:\Code.
+
+$($PSStyle.Foreground.Green)ep$($PSStyle.Reset) - Alias for Edit-Profile, opens the profile for editing.
+
+$($PSStyle.Foreground.Green)vim$($PSStyle.Reset) - Alias for the configured editor ($EDITOR).
 
 $($PSStyle.Foreground.Green)k9$($PSStyle.Reset) <name> - Kills a process by name.
 
@@ -549,6 +565,10 @@ $($PSStyle.Foreground.Green)flushdns$($PSStyle.Reset) - Clears the DNS cache.
 $($PSStyle.Foreground.Green)cpy$($PSStyle.Reset) <text> - Copies the specified text to the clipboard.
 
 $($PSStyle.Foreground.Green)pst$($PSStyle.Reset) - Retrieves text from the clipboard.
+
+$($PSStyle.Foreground.Green)z$($PSStyle.Reset) <dir> - Smart directory navigation using zoxide (jump to frequently used directories).
+
+$($PSStyle.Foreground.Green)zi$($PSStyle.Reset) <dir> - Interactive directory selection using zoxide with fzf.
 
 "@
     Write-Host $helpText
