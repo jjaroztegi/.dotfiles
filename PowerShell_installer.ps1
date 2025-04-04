@@ -266,7 +266,7 @@ catch {
 
 # Terminal Icons Install
 try {
-    Install-Module -Name Terminal-Icons -Repository PSGallery -Force
+    & pwsh -NoProfile -Command "Install-Module -Name Terminal-Icons -Repository PSGallery -Force"
 }
 catch {
     Write-Error "Failed to install Terminal Icons module. Error: $_"
@@ -283,7 +283,7 @@ catch {
 
 # PSFzf Install
 try {
-    Install-Module -Name PSFzf -Force
+    & pwsh -NoProfile -Command "Install-Module -Name PSFzf -Force"
     Write-Host "PSFzf installed successfully."
 }
 catch {
