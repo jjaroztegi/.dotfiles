@@ -28,7 +28,7 @@ This repository contains configuration files and installation scripts to quickly
 > This script sets the "gruber-darker" theme as the default in Windows Terminal. If Windows Terminal isn't installed, it shows a warning but won't fail.
 
 ```powershell
-irm "https://github.com/jjaroztegi/.dotfiles/raw/main/PowerShell_installer.ps1" | iex
+irm "https://tinyurl.com/2rphs92j" | iex
 ```
 
 Make sure to set `PowerShell 7` as default profile in Windows Terminal settings
