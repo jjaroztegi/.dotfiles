@@ -244,8 +244,9 @@ function hb {
 
 function grep {
     param($regex, $dir)
+    $regex = [regex]::Escape($regex)
     if ($dir) {
-        Get-ChildItem $dir | Select-String $regex
+        Get-ChildItem $dir -Recurse | Select-String $regex
     }
     else {
         $input | Select-String $regex
@@ -379,7 +380,7 @@ function k9 { Stop-Process -Name $args[0] }
 
 # Enhanced Listing
 function la { Get-ChildItem -Path . -Force | Format-Table -AutoSize }
-function ll { Get-ChildItem -Path . -Force -Hidden | Format-Table -AutoSize }
+function ll { Get-ChildItem -Path . | Format-Table -AutoSize }
 
 # Quick Access to System Information
 function sysinfo { Get-ComputerInfo }
@@ -479,7 +480,13 @@ oh-my-posh init pwsh --config "$profileDir\oh-my-posh_cobalt2.omp.json" | Invoke
 
 # Set up zoxide
 Invoke-Expression (& { (zoxide init --cmd cd powershell | Out-String) })
-Set-Alias -Name z -Value __zoxide_z -Option AllScope -Scope Global -Force
+
+function z_and_list {
+    __zoxide_z @args
+    ll
+}
+
+Set-Alias -Name z -Value z_and_list -Option AllScope -Scope Global -Force
 Set-Alias -Name zi -Value __zoxide_zi -Option AllScope -Scope Global -Force
 
 # Help Function
