@@ -139,9 +139,6 @@ function admin {
     }
 }
 
-# Set UNIX-like aliases for the admin command, so sudo <command> will run the command with elevated rights.
-Set-Alias -Name sudo -Value admin
-
 function uptime {
     try {
         # check powershell version
