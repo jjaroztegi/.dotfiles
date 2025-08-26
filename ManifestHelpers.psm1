@@ -7,11 +7,19 @@ function Get-DestinationPath {
         [string]$Source,
         [string]$Destination
     )
+    $fileName = Split-Path -Leaf $Source
     if ($Destination) {
-        return $Destination -replace "^~", $env:HOME
+        switch ($Destination.ToLower()) {
+            "shell:startup" {
+                $folder = [Environment]::GetFolderPath("Startup")
+                return Join-Path $folder $fileName
+            }
+            default {
+                return $Destination -replace "^~", $env:HOME
+            }
+        }
     } else {
-        $baseName = Split-Path -Leaf $Source
-        return Join-Path $env:HOME $baseName
+        return Join-Path $env:HOME $fileName
     }
 }
 
