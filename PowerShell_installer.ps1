@@ -196,22 +196,47 @@ function Install-PowerShellCore {
         if ($global:IsAdmin) {
             Install-Package -PackageName "PowerShell 7" -WingetId "Microsoft.PowerShell"
         } else {
-            try {
-                Write-Host "Attempting installation from the Microsoft Store..." -ForegroundColor Cyan
-                winget install -e --id 9MZ1SNWT0N5D --source msstore --accept-source-agreements --accept-package-agreements
-                Write-Host "PowerShell 7 installed successfully from the Microsoft Store." -ForegroundColor Green
-            }
-            catch {
-                Write-Error "Failed to install PowerShell 7 from the Microsoft Store. Error: $_"
+            # Non-admin: Try winget first if available, then fall back to Scoop.
+            if (Get-Command winget -ErrorAction SilentlyContinue) {
+                try {
+                    Write-Host "Attempting installation using Winget..." -ForegroundColor Cyan
+                    winget install -e --id 9MZ1SNWT0N5D --source msstore --accept-source-agreements --accept-package-agreements
+                    Write-Host "PowerShell 7 installed successfully via Winget." -ForegroundColor Green
+                }
+                catch {
+                    Write-Warning "Winget attempt failed. Falling back to Scoop. Error: $_"
+                    try {
+                        if (-not (Get-Command scoop -ErrorAction SilentlyContinue)) { Install-PackageManager }
+                        Write-Host "Attempting installation using Scoop..." -ForegroundColor Cyan
+                        Install-Package -PackageName "PowerShell 7" -ScoopId "main/pwsh"
+                        Write-Host "PowerShell 7 installed successfully from Scoop." -ForegroundColor Green
+                    }
+                    catch {
+                        Write-Error "Failed to install PowerShell 7 via both Winget and Scoop. Error: $_"
+                    }
+                }
+            } else {
+                try {
+                    Write-Host "Winget not found. Using Scoop for installation..." -ForegroundColor Yellow
+                    Install-Package -PackageName "PowerShell 7" -ScoopId "main/pwsh"
+                    Write-Host "PowerShell 7 installed successfully from Scoop." -ForegroundColor Green
+                }
+                catch {
+                    Write-Error "Failed to install PowerShell 7 from Scoop (winget unavailable). Error: $_"
+                }
             }
         }
     } else {
         Write-Host "PowerShell 7 is already installed. Checking for updates..." -ForegroundColor Green
-        try {
-            winget upgrade --id Microsoft.PowerShell --accept-source-agreements --accept-package-agreements
-        }
-        catch {
-            Write-Warning "Could not check for PowerShell 7 updates via winget. Error: $_"
+        if (Get-Command winget -ErrorAction SilentlyContinue) {
+            try {
+                winget upgrade --id Microsoft.PowerShell --accept-source-agreements --accept-package-agreements
+            }
+            catch {
+                Write-Warning "Could not check for PowerShell 7 updates via winget. Error: $_"
+            }
+        } else {
+            Write-Host "Winget not available; skipping automatic update check." -ForegroundColor Yellow
         }
     }
 }
