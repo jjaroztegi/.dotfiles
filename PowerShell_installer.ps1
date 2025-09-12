@@ -255,8 +255,8 @@ function Install-NerdFonts {
     $fontInstalled = $false
     try {
         $fontRegistryPath = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts"
-        $installedFontNames = Get-ItemProperty -Path $fontRegistryPath | 
-                              Get-Member -MemberType NoteProperty | 
+        $installedFontNames = Get-ItemProperty -Path $fontRegistryPath |
+                              Get-Member -MemberType NoteProperty |
                               Select-Object -ExpandProperty Name
 
         if ($installedFontNames -match [regex]::Escape($FontDisplayName)) {
@@ -328,11 +328,11 @@ function Set-WindowsTerminalDefaults {
         if (-not $settings.PSObject.Properties.Name -contains 'profiles') {
             $settings | Add-Member -MemberType NoteProperty -Name 'profiles' -Value (New-Object -TypeName PSObject)
         }
-        
+
         if (-not $settings.profiles.PSObject.Properties.Name -contains 'defaults') {
             $settings.profiles | Add-Member -MemberType NoteProperty -Name 'defaults' -Value (New-Object -TypeName PSObject)
         }
- 
+
         $fontConfig = @{
             face = $FontName
             size = $FontSize
@@ -407,10 +407,12 @@ function Main {
         # Install CLI Tools
         Install-Package -PackageName "fzf"      -ChocoId "fzf"      -ScoopId "main/fzf"
         Install-Package -PackageName "zoxide"   -ChocoId "zoxide"   -ScoopId "main/zoxide"
+        Install-Package -PackageName "ripgrep"  -ChocoId "ripgrep"  -ScoopId "main/ripgrep"
         Install-Package -PackageName "winfetch" -ChocoId "winfetch" -ScoopId "main/winfetch"
 
         # Install PowerShell Modules
         Install-PowerShellModule -ModuleName "Terminal-Icons"
+        Install-PowerShellModule -ModuleName "posh-git"
         Install-PowerShellModule -ModuleName "PSFzf"
 
         # Configure Environment
