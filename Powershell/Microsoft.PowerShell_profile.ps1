@@ -152,26 +152,26 @@ function winutil {
 }
 
 # System Utilities
-function uptime { 
-    try { 
-        if (Get-Command -Name Get-Uptime -ErrorAction SilentlyContinue) { 
-            $uptime = Get-Uptime 
-            $since = Get-Uptime -Since 
-            Write-Host "System started on: $($since.ToString('dddd, MMMM dd, yyyy HH:mm:ss'))" -ForegroundColor DarkGray 
-            Write-Host ("Uptime: {0} days, {1} hours, {2} minutes, {3} seconds" -f $uptime.Days, $uptime.Hours, $uptime.Minutes, $uptime.Seconds) -ForegroundColor Blue 
-        } 
-        else { 
-            # Fallback for older PowerShell versions 
-            $lastBoot = (Get-CimInstance -ClassName Win32_OperatingSystem).LastBootUpTime 
-            $uptime = (Get-Date) - $lastBoot 
-            Write-Host "System started on: $($lastBoot.ToString('dddd, MMMM dd, yyyy HH:mm:ss'))" -ForegroundColor DarkGray 
-            Write-Host ("Uptime: {0} days, {1} hours, {2} minutes, {3} seconds" -f $uptime.Days, $uptime.Hours, $uptime.Minutes, $uptime.Seconds) -ForegroundColor Blue 
-        } 
-    } 
-    catch { 
-        Write-Error "An error occurred while retrieving system uptime." 
-    } 
-} 
+function uptime {
+    try {
+        if (Get-Command -Name Get-Uptime -ErrorAction SilentlyContinue) {
+            $uptime = Get-Uptime
+            $since = Get-Uptime -Since
+            Write-Host "System started on: $($since.ToString('dddd, MMMM dd, yyyy HH:mm:ss'))" -ForegroundColor DarkGray
+            Write-Host ("Uptime: {0} days, {1} hours, {2} minutes, {3} seconds" -f $uptime.Days, $uptime.Hours, $uptime.Minutes, $uptime.Seconds) -ForegroundColor Blue
+        }
+        else {
+            # Fallback for older PowerShell versions
+            $lastBoot = (Get-CimInstance -ClassName Win32_OperatingSystem).LastBootUpTime
+            $uptime = (Get-Date) - $lastBoot
+            Write-Host "System started on: $($lastBoot.ToString('dddd, MMMM dd, yyyy HH:mm:ss'))" -ForegroundColor DarkGray
+            Write-Host ("Uptime: {0} days, {1} hours, {2} minutes, {3} seconds" -f $uptime.Days, $uptime.Hours, $uptime.Minutes, $uptime.Seconds) -ForegroundColor Blue
+        }
+    }
+    catch {
+        Write-Error "An error occurred while retrieving system uptime."
+    }
+}
 
 function update-profile {
     & $profile
@@ -188,9 +188,9 @@ function hb {
         Write-Error "No file path specified."
         return
     }
-    
+
     $FilePath = $args[0]
-    
+
     if (Test-Path $FilePath) {
         $Content = Get-Content $FilePath -Raw
     }
@@ -198,7 +198,7 @@ function hb {
         Write-Error "File path does not exist."
         return
     }
-    
+
     $uri = "http://bin.christitus.com/documents"
     try {
         $response = Invoke-RestMethod -Uri $uri -Method Post -Body $Content -ErrorAction Stop
@@ -209,17 +209,6 @@ function hb {
     }
     catch {
         Write-Error "Failed to upload the document. Error: $_"
-    }
-}
-
-function grep {
-    param($regex, $dir)
-    $regex = [regex]::Escape($regex)
-    if ($dir) {
-        Get-ChildItem $dir -Recurse | Select-String $regex
-    }
-    else {
-        $input | Select-String $regex
     }
 }
 
@@ -331,12 +320,12 @@ function trash($path) {
 }
 
 # Navigation Shortcuts
-function docs { 
+function docs {
     $docs = if (([Environment]::GetFolderPath("MyDocuments"))) { ([Environment]::GetFolderPath("MyDocuments")) } else { $HOME + "\Documents" }
     Set-Location -Path $docs
 }
-    
-function dtop { 
+
+function dtop {
     $dtop = if ([Environment]::GetFolderPath("Desktop")) { [Environment]::GetFolderPath("Desktop") } else { $HOME + "\Documents" }
     Set-Location -Path $dtop
 }
@@ -425,7 +414,7 @@ $scriptblock = {
         'npm'  = @('install', 'start', 'run', 'test', 'build')
         'deno' = @('run', 'compile', 'bundle', 'test', 'lint', 'fmt', 'cache', 'info', 'doc', 'upgrade')
     }
-    
+
     $command = $commandAst.CommandElements[0].Value
     if ($customCompletions.ContainsKey($command)) {
         $customCompletions[$command] | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
@@ -481,10 +470,6 @@ $($PSStyle.Foreground.Green)Get-PubIP$($PSStyle.Reset) - Retrieves the public IP
 
 $($PSStyle.Foreground.Green)winutil$($PSStyle.Reset) - Runs the latest WinUtil full-release script from Chris Titus Tech.
 
-$($PSStyle.Foreground.Green)admin$($PSStyle.Reset) [command] - Opens a new terminal with admin privileges, optionally running a command.
-
-$($PSStyle.Foreground.Green)sudo$($PSStyle.Reset) <command> - Alias for admin, runs commands with elevated privileges.
-
 $($PSStyle.Foreground.Green)uptime$($PSStyle.Reset) - Displays the system uptime.
 
 $($PSStyle.Foreground.Green)update-profile$($PSStyle.Reset) - Reloads the current user's PowerShell profile.
@@ -492,8 +477,6 @@ $($PSStyle.Foreground.Green)update-profile$($PSStyle.Reset) - Reloads the curren
 $($PSStyle.Foreground.Green)unzip$($PSStyle.Reset) <file> - Extracts a zip file to the current directory.
 
 $($PSStyle.Foreground.Green)hb$($PSStyle.Reset) <file> - Uploads the specified file's content to a hastebin-like service and returns the URL.
-
-$($PSStyle.Foreground.Green)grep$($PSStyle.Reset) <regex> [dir] - Searches for a regex pattern in files within the specified directory or from the pipeline input.
 
 $($PSStyle.Foreground.Green)df$($PSStyle.Reset) - Displays information about volumes.
 
