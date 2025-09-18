@@ -1,6 +1,6 @@
 Unix/.gitconfig|symlink|
 Unix/.gitignore|symlink|
-Unix/.p10k.zsh|symlink|
+Unix/.robbyrussell.zsh-theme|symlink|$ZSH_CUSTOM/themes/.robbyrussell.zsh-theme
 Unix/.tmux.conf|symlink|
 Unix/tmux-sessionizer.sh|symlink|~/scripts/tmux-sessionizer.sh
 Unix/btop/btop.conf|symlink|~/.config/btop/btop.conf

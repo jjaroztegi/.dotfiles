@@ -4,6 +4,22 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$BASH_SOURCE[0]")" && pwd)"
 
+resolve_path() {
+    local path="$1"
+
+    # ~ to $HOME
+    path="${path/#\~/$HOME}"
+
+    path="${path//\$HOME/$HOME}"
+
+    # $ZSH_CUSTOM with fallback to default
+    local zsh_custom_default="$HOME/.oh-my-zsh/custom"
+    local zsh_custom_value="${ZSH_CUSTOM:-$zsh_custom_default}"
+    path="${path//\$ZSH_CUSTOM/$zsh_custom_value}"
+
+    echo "$path"
+}
+
 symlinkFile() {
     source_path="$SCRIPT_DIR/$1"
 
@@ -13,7 +29,7 @@ symlinkFile() {
         destination="$HOME/$(basename "$1")"
     fi
 
-    destination="${destination/#\~/$HOME}"
+    destination="$(resolve_path "$destination")"
     display_destination="${destination/#$HOME/~}"
 
     mkdir -p $(dirname "$destination")
@@ -41,7 +57,7 @@ copyFile() {
         destination="$HOME/$(basename "$1")"
     fi
 
-    destination="${destination/#\~/$HOME}"
+    destination="$(resolve_path "$destination")"
     display_destination="${destination/#$HOME/~}"
 
     mkdir -p $(dirname "$destination")
