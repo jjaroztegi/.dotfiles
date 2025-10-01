@@ -83,20 +83,6 @@ function Clear-Cache {
     Write-Host "Clearing Internet Explorer Cache..." -ForegroundColor Yellow
     Remove-Item -Path "$env:LOCALAPPDATA\Microsoft\Windows\INetCache\*" -Recurse -Force -ErrorAction SilentlyContinue
 
-    # Developer Tool Caches
-    if (Test-CommandExists npm) {
-        Write-Host "Clearing npm cache..." -ForegroundColor Yellow
-        npm cache clean --force
-    }
-    if (Test-CommandExists pip) {
-        Write-Host "Clearing pip cache..." -ForegroundColor Yellow
-        pip cache purge
-    }
-    if (Test-CommandExists dotnet) {
-        Write-Host "Clearing dotnet NuGet cache..." -ForegroundColor Yellow
-        dotnet nuget locals all --clear
-    }
-
     Write-Host "Cache clearing completed." -ForegroundColor Green
 }
 
@@ -350,6 +336,15 @@ function flushdns {
     Write-Host "DNS has been flushed"
 }
 
+# System Management
+function reboot {
+    C:\Windows\System32\shutdown.exe /r /t 0
+}
+
+function reboot-uefi {
+    C:\Windows\System32\shutdown.exe /r /fw /f /t 0
+}
+
 # Clipboard Utilities
 function cpy { Set-Clipboard $args[0] }
 
@@ -521,6 +516,10 @@ $($PSStyle.Foreground.Green)ll$($PSStyle.Reset) - Lists all files, including hid
 $($PSStyle.Foreground.Green)sysinfo$($PSStyle.Reset) - Displays detailed system information.
 
 $($PSStyle.Foreground.Green)flushdns$($PSStyle.Reset) - Clears the DNS cache.
+
+$($PSStyle.Foreground.Green)reboot$($PSStyle.Reset) - Restarts the computer immediately.
+
+$($PSStyle.Foreground.Green)reboot-uefi$($PSStyle.Reset) - Restarts the computer and boots into UEFI/BIOS firmware settings.
 
 $($PSStyle.Foreground.Green)cpy$($PSStyle.Reset) <text> - Copies the specified text to the clipboard.
 
