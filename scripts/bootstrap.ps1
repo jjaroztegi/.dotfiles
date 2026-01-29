@@ -32,7 +32,7 @@ if ([string]::IsNullOrWhiteSpace($PSScriptRoot)) {
         Write-Host "[INFO] Using existing repository at $repoDir" -ForegroundColor Cyan
     }
 
-    $bootstrapPath = Join-Path $repoDir "scripts" "bootstrap.ps1"
+    $bootstrapPath = Join-Path (Join-Path $repoDir "scripts") "bootstrap.ps1"
     Write-Host "[INFO] Launching local bootstrap: $bootstrapPath" -ForegroundColor Cyan
     & $bootstrapPath @PSBoundParameters
     exit

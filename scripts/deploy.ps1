@@ -9,7 +9,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$modulePath = Join-Path $PSScriptRoot 'lib' 'ManifestHelpers.psm1'
+$modulePath = Join-Path (Join-Path $PSScriptRoot 'lib') 'ManifestHelpers.psm1'
 if (-not (Test-Path $modulePath)) {
     throw "Module not found: $modulePath"
 }
