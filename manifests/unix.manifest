@@ -1,0 +1,7 @@
+common/.gitconfig|symlink|
+common/.gitignore|symlink|
+unix/themes/robbyrussell.zsh-theme|symlink|$ZSH_CUSTOM/themes/robbyrussell.zsh-theme
+unix/shell/.tmux.conf|symlink|
+unix/shell/tmux-sessionizer.sh|symlink|~/scripts/tmux-sessionizer.sh
+unix/config/btop/btop.conf|symlink|~/.config/btop/btop.conf
+unix/shell/.zshrc|copy|

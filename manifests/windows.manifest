@@ -1,0 +1,10 @@
+windows/apps/winfetch/config.ps1|copy|~\.config\winfetch\config.ps1
+common/.gitconfig|symlink|
+common/.gitignore|symlink|
+windows/shell/.wslconfig|symlink|
+windows/autostart/AppToggle.ahk|symlink|shell:startup
+windows/apps/msi-afterburner/MSIAfterburner.cfg|copy|$AppPath[MSI Afterburner]\Profiles\MSIAfterburner.cfg
+windows/apps/rivatuner/|copy|$AppPath[RivaTuner Statistics Server]\Profiles
+windows/shell/Microsoft.PowerShell_profile.ps1|symlink|$ProfileDir\Microsoft.PowerShell_profile.ps1
+windows/shell/oh-my-posh_cobalt2.omp.json|symlink|$ProfileDir\oh-my-posh_cobalt2.omp.json
+windows/shell/powershell.config.json|symlink|$ProfileDir\powershell.config.json

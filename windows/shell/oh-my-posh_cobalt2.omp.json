@@ -9,7 +9,7 @@
           "foreground": "#e4e4ef",
           "leading_diamond": "\ue0b6",
           "trailing_diamond": "\uE0B0",
-          "properties": {
+          "options": {
             "style": "full"
           },
           "style": "diamond",
@@ -27,9 +27,11 @@
           "foreground": "#181818",
           "leading_diamond": "<transparent,background>\uE0B0</>",
           "trailing_diamond": "\ue0b4",
-          "properties": {
-            "fetch_stash_count": true,
-            "fetch_status": true
+          "options": {
+            "fetch_status": true,
+            "fetch_push_status": true,
+            "fetch_upstream_icon": true,
+            "native_fallback": true
           },
           "style": "diamond",
           "template": " {{ .HEAD }}{{ if .Staging.Changed }}<#e9c062> \uf046 {{ .Staging.String }}</>{{ end }}{{ if and (.Working.Changed) (.Staging.Changed) }} |{{ end }}{{ if .Working.Changed }} \uf044 {{ .Working.String }}{{ end }}{{ if gt .StashCount 0 }} \ueb4b {{ .StashCount }}{{ end }} ",
@@ -40,5 +42,5 @@
     }
   ],
   "final_space": true,
-  "version": 3
+  "version": 4
 }

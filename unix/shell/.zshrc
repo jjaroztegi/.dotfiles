@@ -118,3 +118,19 @@ source $ZSH/oh-my-zsh.sh
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
 
 alias tmux-sessionizer="source ~/scripts/tmux-sessionizer.sh"
+
+source <(fzf --zsh)
+
+export PYENV_ROOT="$HOME/.pyenv"
+[[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
+eval "$(pyenv init - zsh)"
+
+eval "$(fnm env --use-on-cd --shell zsh)"
+
+export VCPKG_ROOT="$HOME/vcpkg"
+autoload bashcompinit
+bashcompinit
+source $HOME/vcpkg/scripts/vcpkg_completion.zsh
+
+export PATH="/opt/homebrew/opt/qt@5/bin:$PATH"
+export OPENSSL_ROOT_DIR=/opt/homebrew/opt/openssl@3

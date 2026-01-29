@@ -10,44 +10,59 @@ This repository contains configuration files and installation scripts to quickly
 
 ```
 .
-├── deploy.ps1                   # Windows deployment script
-├── deploy.sh                    # Unix deployment script
-├── MANIFEST/                    # Folder containing manifest files
-│   ├── MANIFEST.unix            # Configuration manifest for Unix systems
-│   └── MANIFEST.windows         # Configuration manifest for Windows systems
-└── PowerShell_installer.ps1     # PowerShell installation script
+├── common/                  # Shared configurations (git, ignore)
+├── manifests/               # Manifest files
+│   ├── unix.manifest        # Configuration manifest for Unix systems
+│   └── windows.manifest     # Configuration manifest for Windows systems
+├── scripts/                 # Deployment and setup scripts
+│   ├── bootstrap.ps1        # Full Windows setup (Apps + Dotfiles)
+│   ├── deploy.ps1           # Windows dotfiles linker
+│   └── deploy.sh            # Unix deployment script
+├── unix/                    # Unix-specific configuration
+└── windows/                 # Windows-specific configuration
 ```
 
 ## Quick Start
 
 ### Windows
 
-1. Install PowerShell 7
-
-> [!NOTE]  
-> This script sets the "gruber-darker" theme as the default in Windows Terminal. If Windows Terminal isn't installed, it shows a warning but won't fail.
+1. **Bootstrap Environment** (Installs PowerShell 7, Winget, Git if missing)
 
 ```powershell
-irm "https://tinyurl.com/2rphs92j" | iex
+irm "https://tinyurl.com/mum8xazv" | iex
 ```
 
-Make sure to set `PowerShell 7` as default profile in Windows Terminal settings
-
-2. Open PowerShell 7 and clone the repository
+2. **Clone the repository**
 
    ```powershell
    git clone https://github.com/jjaroztegi/.dotfiles.git
    cd .dotfiles
    ```
 
-3. Deploy dotfiles
+3. **Deploy**
 
-> [!IMPORTANT]  
-> The `deploy.ps1` script will not work with PowerShell 5
+   Run with `ExecutionPolicy Bypass` to ensure the script runs regardless of system settings:
 
-```powershell
-.\deploy.ps1
-```
+   For a full setup (Apps + Fonts + Dotfiles):
+
+   ```powershell
+   powershell.exe -ExecutionPolicy Bypass -File .\scripts\bootstrap.ps1
+   ```
+
+   For just dotfiles linking (supports `-WhatIf` for dry-run):
+
+   ```powershell
+   pwsh -ExecutionPolicy Bypass -File .\scripts\deploy.ps1
+   ```
+
+> [!NOTE]
+> **Privileges & Symlinks**: `deploy.ps1` does not automatically prompt for elevation.
+>
+> - To create **Symbolic Links**, you must either run the script as **Administrator** or have **Developer Mode** enabled on Windows.
+> - If neither is available, the script will automatically fallback to **copying** the files instead.
+
+> [!IMPORTANT]
+> The scripts now feature **Context Preservation**. Even when elevating to Administrator, your `HOME` and `AppData` paths are preserved, ensuring dotfiles are deployed to your user profile, not the Admin's.
 
 ### Linux/macOS
 
@@ -60,41 +75,41 @@ Make sure to set `PowerShell 7` as default profile in Windows Terminal settings
 
 2. Deploy dotfiles
    ```bash
-   ./deploy.sh
+   ./scripts/deploy.sh
    ```
 
 ## How It Works
 
 This dotfiles manager uses a manifest-based approach to manage configuration files:
 
-- `MANIFEST.windows` - Configuration for Windows systems
-- `MANIFEST.unix` - Configuration for Linux/macOS systems
+- `manifests/windows.manifest` - Configuration for Windows systems
+- `manifests/unix.manifest` - Configuration for Linux/macOS systems
 
 ### Manifest Format
 
 Each line in a manifest file has the following format:
 
 ```
-filename|operation|destination
+source_path|operation|destination_path
 ```
 
 Where:
 
-- `filename`: The file to be processed
-- `operation`: The operation to perform (symlink, copy)
-- `destination`: The destination folder/file to which the folder/file will be symlinked or copied.
+- `source_path`: The file in the repo to be processed (relative to repo root).
+- `operation`: The operation to perform (`symlink` or `copy`).
+- `destination_path`: The target location on the system. Supports variables like `~`, `$HOME`, `$ProfileDir`, `$AppData`, and `$AppPath[Name]`.
 
 Example:
 
 ```
-Unix/.gitconfig|symlink|~/.gitconfig
-Windows/.config|copy|
+unix/shell/.zshrc|copy|
+windows/shell/Microsoft.PowerShell_profile.ps1|symlink|$ProfileDir\Microsoft.PowerShell_profile.ps1
 ```
 
 ## Customization
 
 1. Fork this repository
-2. Modify the manifests to include your own configuration files
+2. Modify the manifests in `manifests/` to include your own configuration files
 3. Update the deployment scripts if needed
 4. Run the deployment scripts on your machines
 
