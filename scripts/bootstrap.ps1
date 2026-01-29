@@ -6,6 +6,38 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# Remote Bootstrapping
+if ([string]::IsNullOrWhiteSpace($PSScriptRoot)) {
+    Write-Host "[INFO] No local script root detected. Bootstrapping repository..." -ForegroundColor Cyan
+
+    $repoDir = Join-Path $HOME ".dotfiles"
+    if (-not (Test-Path $repoDir)) {
+        if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+            Write-Host "[INFO] Git not found. Attempting to install via Winget..." -ForegroundColor Yellow
+            if (Get-Command winget -ErrorAction SilentlyContinue) {
+                winget install --id Git.Git --source winget --accept-package-agreements --accept-source-agreements --silent
+                # Refresh path
+                $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+            }
+
+            if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+                Write-Host "[ERROR] Git is still missing. Please install Git manually to clone the repository." -ForegroundColor Red
+                exit 1
+            }
+        }
+        Write-Host "[INFO] Cloning repository to $repoDir..." -ForegroundColor Cyan
+        git clone https://github.com/jjaroztegi/.dotfiles.git $repoDir
+    }
+    else {
+        Write-Host "[INFO] Using existing repository at $repoDir" -ForegroundColor Cyan
+    }
+
+    $bootstrapPath = Join-Path $repoDir "scripts" "bootstrap.ps1"
+    Write-Host "[INFO] Launching local bootstrap: $bootstrapPath" -ForegroundColor Cyan
+    & $bootstrapPath @PSBoundParameters
+    exit
+}
+
 $modulesDir = Join-Path $PSScriptRoot "modules"
 $libDir = Join-Path $PSScriptRoot "lib"
 $env:PSModulePath = $libDir + [IO.Path]::PathSeparator + $env:PSModulePath
