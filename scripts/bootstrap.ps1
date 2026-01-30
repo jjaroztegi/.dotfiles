@@ -180,6 +180,23 @@ try {
 
     Install-PackageManagers
     Install-DevTools
+
+    if (Get-Command fnm -ErrorAction SilentlyContinue) {
+        Write-LogInfo "Configuring fnm (Node 24)..."
+        fnm install 24
+        fnm default 24
+    }
+
+    if (Get-Command pyenv -ErrorAction SilentlyContinue) {
+        Write-LogInfo "Configuring pyenv-win (Latest Python)..."
+        $latestPython = pyenv install --list | Where-Object { $_.Trim() -match '^\d+\.\d+\.\d+$' } | Select-Object -Last 1
+        if ($latestPython) {
+            Write-LogInfo "Installing Python $latestPython..."
+            pyenv install $latestPython
+            pyenv global $latestPython
+        }
+    }
+
     Install-NerdFonts
 
     Install-PowerShellModules -Modules @("Terminal-Icons", "posh-git", "PSFzf")
