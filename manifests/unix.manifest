@@ -5,3 +5,6 @@ unix/shell/.tmux.conf|symlink|
 unix/shell/tmux-sessionizer.sh|symlink|~/scripts/tmux-sessionizer.sh
 unix/config/btop/btop.conf|symlink|~/.config/btop/btop.conf
 unix/shell/.zshrc|copy|
+common/vscode/settings.json|symlink|~/.config/Code/User/settings.json
+common/vscode/keybindings.json|symlink|~/.config/Code/User/keybindings.json
+

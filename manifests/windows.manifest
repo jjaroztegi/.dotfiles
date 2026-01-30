@@ -8,3 +8,5 @@ windows/apps/rivatuner/|copy|$AppPath[RivaTuner Statistics Server]\Profiles
 windows/shell/Microsoft.PowerShell_profile.ps1|symlink|$ProfileDir\Microsoft.PowerShell_profile.ps1
 windows/shell/oh-my-posh_cobalt2.omp.json|symlink|$ProfileDir\oh-my-posh_cobalt2.omp.json
 windows/shell/powershell.config.json|symlink|$ProfileDir\powershell.config.json
+common/vscode/settings.json|symlink|$AppData\Code\User\settings.json
+common/vscode/keybindings.json|symlink|$AppData\Code\User\keybindings.json

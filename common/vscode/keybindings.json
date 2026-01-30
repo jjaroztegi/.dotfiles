@@ -1,0 +1,303 @@
+// Place your key bindings in this file to override the defaults
+[
+  {
+    "key": "shift+space",
+    "command": "cursorLineEnd",
+    "when": "editorTextFocus"
+  },
+  //==============================================================================
+  // WINDOW MANAGEMENT
+  //==============================================================================
+  {
+    "key": "ctrl+alt+l",
+    "command": "workbench.action.focusRightGroup",
+    "when": "editorTextFocus"
+  },
+  {
+    "key": "ctrl+alt+h",
+    "command": "workbench.action.focusLeftGroup",
+    "when": "editorTextFocus"
+  },
+  {
+    "key": "ctrl+alt+k",
+    "command": "workbench.action.focusAboveGroup",
+    "when": "editorTextFocus"
+  },
+  {
+    "key": "ctrl+alt+j",
+    "command": "workbench.action.focusBelowGroup",
+    "when": "editorTextFocus"
+  },
+  {
+    "key": "shift+alt+j",
+    "command": "workbench.action.splitEditorDown",
+    "when": "editorTextFocus"
+  },
+  {
+    "key": "shift+alt+k",
+    "command": "workbench.action.moveEditorToAboveGroup",
+    "when": "editorTextFocus"
+  },
+  {
+    "key": "shift+alt+j",
+    "command": "workbench.action.moveEditorToBelowGroup",
+    "when": "editorTextFocus"
+  },
+  {
+    "key": "shift+alt+h",
+    "command": "workbench.action.moveEditorToLeftGroup",
+    "when": "editorTextFocus"
+  },
+  {
+    "key": "shift+alt+l",
+    "command": "workbench.action.moveEditorToRightGroup",
+    "when": "editorTextFocus"
+  },
+  {
+    "key": "ctrl+alt+n",
+    "command": "explorer.newFile",
+    "when": "!isMac"
+  },
+  {
+    "key": "cmd+alt+n",
+    "command": "explorer.newFile",
+    "when": "isMac"
+  },
+  //==============================================================================
+  // VIM INTEGRATION
+  //==============================================================================
+  {
+    "key": "ctrl+h",
+    "command": "workbench.action.focusLeftGroup",
+    "when": "editorTextFocus && vim.active && vim.mode != 'Insert'"
+  },
+  {
+    "key": "ctrl+l",
+    "command": "workbench.action.focusRightGroup",
+    "when": "editorTextFocus && vim.active && vim.mode != 'Insert'"
+  },
+  {
+    "key": "ctrl+k + ctrl+k",
+    "command": "workbench.action.focusAboveGroup",
+    "when": "editorTextFocus && vim.active && vim.mode != 'Insert'"
+  },
+  {
+    "key": "ctrl+j",
+    "command": "workbench.action.focusBelowGroup",
+    "when": "editorTextFocus && vim.active && vim.mode != 'Insert'"
+  },
+  //==============================================================================
+  // MULTI-COMMANDS
+  //==============================================================================
+  {
+    "key": "ctrl+shift+oem_1",
+    "command": "runCommands",
+    "args": {
+      "commands": ["workbench.action.toggleMaximizedPanel", "workbench.action.terminal.focus"]
+    },
+    "when": "!terminalFocus || terminalFocus"
+  },
+  {
+    "key": "ctrl+shift+t",
+    "command": "runCommands",
+    "args": {
+      "commands": ["workbench.action.terminal.new", "workbench.action.terminal.focus"]
+    },
+    "when": "editorTextFocus || terminalFocus"
+  },
+  //==============================================================================
+  // EDITOR GROUP MANAGEMENT
+  //==============================================================================
+  {
+    "key": "alt+h",
+    "command": "workbench.action.decreaseViewWidth"
+  },
+  {
+    "key": "alt+l",
+    "command": "workbench.action.increaseViewWidth"
+  },
+  {
+    "key": "ctrl+w m",
+    "command": "workbench.action.toggleMaximizeEditorGroup"
+  },
+  {
+    "key": "ctrl+1",
+    "command": "workbench.action.focusFirstEditorGroup"
+  },
+  {
+    "key": "ctrl+2",
+    "command": "workbench.action.focusSecondEditorGroup"
+  },
+  //==============================================================================
+  // CODE NAVIGATION & EDITING
+  //==============================================================================
+  {
+    "key": "ctrl+*",
+    "command": "editor.action.revealDefinition",
+    "when": "editorHasDefinitionProvider && editorTextFocus"
+  },
+  {
+    "key": "ctrl+t",
+    "command": "workbench.action.navigateBack"
+  },
+  {
+    "key": "ctrl+space f",
+    "command": "editor.action.formatDocument",
+    "when": "editorTextFocus && !editorReadonly"
+  },
+  //==============================================================================
+  // LISTS / QUICK OPEN / SUGGESTIONS
+  //==============================================================================
+  {
+    "key": "ctrl+n",
+    "command": "selectNextSuggestion",
+    "when": "suggestWidgetVisible"
+  },
+  {
+    "key": "ctrl+p",
+    "command": "selectPrevSuggestion",
+    "when": "suggestWidgetVisible"
+  },
+  {
+    "key": "ctrl+n",
+    "command": "workbench.action.quickOpenSelectNext",
+    "when": "inQuickOpen"
+  },
+  {
+    "key": "ctrl+p",
+    "command": "workbench.action.quickOpenSelectPrevious",
+    "when": "inQuickOpen"
+  },
+  {
+    "key": "ctrl+p",
+    "command": "workbench.action.quickOpen",
+    "when": "editorTextFocus && !suggestWidgetVisible"
+  },
+  //==============================================================================
+  // SEARCH & PROBLEMS
+  //==============================================================================
+  {
+    "key": "ctrl+shift+f",
+    "command": "workbench.action.findInFiles",
+    "when": "editorFocus"
+  },
+  {
+    "key": "F4",
+    "command": "editor.action.nextMatchFindAction",
+    "when": "editorFocus"
+  },
+  {
+    "key": "shift+F4",
+    "command": "editor.action.previousMatchFindAction",
+    "when": "editorFocus"
+  },
+  {
+    "key": "F8",
+    "command": "editor.action.marker.nextInFiles",
+    "when": "editorFocus"
+  },
+  {
+    "key": "shift+F8",
+    "command": "editor.action.marker.prevInFiles",
+    "when": "editorFocus"
+  },
+  //==============================================================================
+  // TAB MANAGEMENT
+  //==============================================================================
+  {
+    "key": "alt+oem_1",
+    "command": "workbench.action.previousEditor"
+  },
+  {
+    "key": "alt+oem_plus",
+    "command": "workbench.action.nextEditor"
+  },
+  //==============================================================================
+  // FILE EXPLORER
+  //==============================================================================
+  {
+    "key": "ctrl+shift+e",
+    "command": "workbench.files.action.focusFilesExplorer",
+    "when": "editorTextFocus"
+  },
+  {
+    "key": "ctrl+shift+e",
+    "command": "workbench.action.focusActiveEditorGroup",
+    "when": "explorerViewletVisible && filesExplorerFocus"
+  },
+  {
+    "key": "ctrl+shift+1",
+    "command": "explorer.openToSide",
+    "args": { "group": 0 },
+    "when": "explorerViewletVisible && filesExplorerFocus && !inputFocus"
+  },
+  {
+    "key": "ctrl+shift+2",
+    "command": "explorer.openToSide",
+    "args": { "group": 1 },
+    "when": "explorerViewletVisible && filesExplorerFocus && !inputFocus"
+  },
+  {
+    "key": "ctrl+enter",
+    "command": "renameFile",
+    "when": "explorerViewletVisible && filesExplorerFocus"
+  },
+  {
+    "key": "enter",
+    "command": "-renameFile",
+    "when": "explorerViewletVisible && filesExplorerFocus"
+  },
+  {
+    "key": "enter",
+    "command": "list.select",
+    "when": "listFocus && !inputFocus"
+  },
+  //==============================================================================
+  // PANEL / TERMINAL / UTILITIES
+  //==============================================================================
+  {
+    "key": "ctrl+n",
+    "command": "list.focusDown",
+    "when": "listFocus && !inputFocus"
+  },
+  {
+    "key": "ctrl+p",
+    "command": "list.focusUp",
+    "when": "listFocus && !inputFocus"
+  },
+  {
+    "key": "ctrl+oem_1",
+    "command": "workbench.action.terminal.toggleTerminal",
+    "when": "editorTextFocus || terminalFocus"
+  },
+  {
+    "key": "ctrl+shift+w",
+    "command": "workbench.action.closeFolder",
+    "when": "emptyWorkspaceSupport"
+  },
+  {
+    "key": "ctrl+k p",
+    "command": "workbench.action.files.copyPathOfActiveFile"
+  },
+  {
+    "key": "ctrl+oem_plus",
+    "command": "editor.action.fontZoomIn"
+  },
+  {
+    "key": "ctrl+oem_plus",
+    "command": "-workbench.action.zoomIn"
+  },
+  {
+    "key": "ctrl+oem_minus",
+    "command": "-workbench.action.zoomOut"
+  },
+  {
+    "key": "ctrl+oem_minus",
+    "command": "editor.action.fontZoomOut"
+  },
+  {
+    "key": "ctrl+0",
+    "command": "editor.action.fontZoomReset",
+    "when": "editorTextFocus"
+  }
+]

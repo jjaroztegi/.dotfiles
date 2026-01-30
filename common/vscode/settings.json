@@ -1,0 +1,268 @@
+{
+  // -----------------
+  //  Minimalist UI
+  // -----------------
+  "window.commandCenter": false, // Hides the top search bar/command center
+  "workbench.layoutControl.enabled": false, // Hides the layout control buttons (top right)
+  "window.menuBarVisibility": "toggle", // Hides menu bar (press Alt to show)
+  "window.titleBarStyle": "custom", // "custom" merges title bar with window; "native" adds a system bar on Windows
+  "workbench.activityBar.location": "top",
+  "workbench.statusBar.visible": true,
+  "workbench.editor.empty.hint": "hidden",
+  "workbench.startupEditor": "none",
+  "workbench.productIconTheme": "material-product-icons",
+  "workbench.iconTheme": "material-icon-theme",
+  "workbench.editor.limit.enabled": true,
+  "workbench.editor.limit.value": 10,
+  "workbench.editor.limit.perEditorGroup": true,
+
+  // -----------------
+  //  Editor Settings
+  // -----------------
+  "editor.fontSize": 18,
+  "editor.fontFamily": "'Iosevka Nerd Font', 'Iosevka Nerd Font Mono', Consolas, Menlo, 'Courier New', monospace",
+  "editor.fontLigatures": true, // Can be set to string (e.g. "'ss01', 'cv01'") for specific font features
+  "editor.minimap.enabled": false,
+  "editor.lineNumbers": "relative",
+  "editor.scrollBeyondLastLine": false,
+  "editor.cursorSurroundingLines": 8,
+  "editor.smoothScrolling": true,
+  "editor.formatOnPaste": true,
+  "editor.stickyScroll.enabled": true,
+  "editor.inlayHints.enabled": "offUnlessPressed",
+  "editor.accessibilitySupport": "off",
+  "editor.renderLineHighlight": "none",
+  "editor.renderWhitespace": "boundary",
+  "editor.bracketPairColorization.enabled": false,
+  "editor.guides.bracketPairs": "active",
+  "editor.linkedEditing": true,
+  "editor.experimental.asyncTokenization": true,
+  "editor.tabSize": 4,
+  "editor.insertSpaces": true,
+  "editor.inlineSuggest.enabled": true,
+
+  // --------------------------
+  //  File & Explorer Settings
+  // --------------------------
+  "files.autoSave": "afterDelay",
+  "files.eol": "\n",
+  "files.trimTrailingWhitespace": true,
+  "explorer.confirmDelete": false,
+  "explorer.confirmDragAndDrop": false,
+  "explorer.confirmPasteNative": false,
+  "files.associations": {
+    "*.env": "properties",
+    "*.kt": "gradle-kotlin-dsl",
+    "*.json": "jsonc"
+  },
+  "workbench.editorAssociations": {
+    "*.copilotmd": "vscode.markdown.preview.editor",
+    "{hexdiff}:/**/*.*": "hexEditor.hexedit",
+    "{git,gitlens}:/**/*.ui": "default",
+    "*.pdf": "latex-workshop-pdf-hook",
+    "git-rebase-todo": "default"
+  },
+
+  // -------------------
+  //  Terminal Settings
+  // -------------------
+  "terminal.integrated.fontFamily": "'Iosevka Nerd Font Mono', monospace",
+  "terminal.integrated.fontSize": 15,
+  "terminal.integrated.defaultProfile.osx": "zsh",
+  "terminal.integrated.defaultProfile.windows": "PowerShell",
+  "terminal.integrated.commandsToSkipShell": ["matlab.interrupt"],
+  "terminal.integrated.gpuAcceleration": "on",
+
+  // --------------
+  //  Git Settings
+  // --------------
+  "git.autofetch": "all",
+  "git.confirmSync": false,
+  "git.openRepositoryInParentFolders": "always",
+
+  // -----------------------------
+  //  Language Specific Settings
+  // -----------------------------
+  "powershell.integratedConsole.showOnStartup": false,
+  "C_Cpp.clang_format_style": "Google",
+  "C_Cpp.default.cppStandard": "gnu++23",
+  "C_Cpp.default.cStandard": "gnu23",
+  "C_Cpp.autoAddFileAssociations": false,
+  "java.format.settings.url": "https://raw.githubusercontent.com/google/styleguide/gh-pages/eclipse-java-google-style.xml",
+  "java.format.settings.profile": "GoogleStyle",
+  "java.project.importOnFirstTimeStartup": "interactive",
+  "go.toolsManagement.autoUpdate": true,
+  "xml.server.vmargs": "-Xmx128M",
+
+  // Formatter mapping
+  "[c]": {
+    "editor.defaultFormatter": "ms-vscode.cpptools",
+    "editor.tabSize": 2
+  },
+  "[cpp]": {
+    "editor.defaultFormatter": "ms-vscode.cpptools",
+    "editor.tabSize": 2
+  },
+  "[java]": { "editor.defaultFormatter": "redhat.java" },
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.codeActionsOnSave": {
+      "source.fixAll.ruff": "explicit",
+      "source.organizeImports.ruff": "explicit"
+    }
+  },
+  "[go]": { "editor.defaultFormatter": "golang.go" },
+  "[html]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "[css]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "[javascript]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "[javascriptreact]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "[typescript]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "[typescriptreact]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "[json]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "[jsonc]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "[markdown]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "[dockerfile]": { "editor.defaultFormatter": "ms-azuretools.vscode-containers" },
+  "[dockercompose]": { "editor.defaultFormatter": "ms-azuretools.vscode-containers" },
+  "[nginx]": { "editor.defaultFormatter": "ahmadalli.vscode-nginx-conf" },
+
+  // ---------------------
+  //  Extension Settings
+  // ---------------------
+  "prettier.tabWidth": 2,
+  "prettier.printWidth": 120,
+
+  "Workspace_Formatter.includePattern": [
+    "*.c",
+    "*.cpp",
+    "*.java",
+    "*.js",
+    "*.md",
+    "*.html",
+    "*.json",
+    "*.yaml",
+    "*.yml"
+  ],
+
+  // --- CMake & Makefile ---
+  "cmake.enabledOutputParsers": ["cmake", "msvc", "gcc", "gnuld", "ghs", "diab"],
+  "cmake.pinnedCommands": ["workbench.action.tasks.configureTaskRunner", "workbench.action.tasks.runTask"],
+  "cmake.automaticReconfigure": false,
+  "cmake.configureOnEdit": false,
+  "cmake.configureOnOpen": false,
+  "makefile.configureOnOpen": true,
+
+  // --- LaTeX ---
+  "latex-workshop.formatting.latex": "latexindent",
+
+  // --- Copilot ---
+  "github.copilot.enable": {
+    "*": true,
+    "plaintext": false,
+    "scminput": false,
+    "cpp": false,
+    "c": false
+  },
+  "github.copilot.nextEditSuggestions.enabled": true,
+  "chat.agent.enabled": true,
+
+  // --- Remote SSH ---
+  "remote.SSH.remotePlatform": {
+    "m4tr1x": "linux",
+    "libreelec": "linux"
+  },
+
+  // --- GitLens ---
+  "gitlens.ai.model": "vscode",
+  "gitlens.ai.vscode.model": "copilot:claude-sonnet-4.5",
+
+  // ----------------
+  //  Vim Settings
+  // ----------------
+  "vim.enableNeovim": true,
+  "vim.incsearch": true,
+  "vim.useSystemClipboard": true,
+  "vim.useCtrlKeys": true,
+  "vim.hlsearch": true,
+  "vim.leader": " ",
+  "vim.sneak": true,
+  "vim.smartRelativeLine": true,
+  "vim.foldfix": true,
+  "vim.highlightedyank.enable": true,
+  "vim.highlightedyank.duration": 200,
+  "vim.highlightedyank.color": "rgba(255, 255, 255, 0.1)",
+  "vim.searchMatchTextColor": "#0a0a0a",
+  "vim.searchHighlightTextColor": "#0a0a0a",
+  "vim.handleKeys": {
+    "<C-d>": true,
+    "<C-u>": true,
+    "<C-k>": true,
+    "<C-f>": false,
+    "<C-p>": false
+  },
+  "vim.insertModeKeyBindings": [{ "before": ["j", "j"], "after": ["<Esc>"] }],
+  "vim.operatorPendingModeKeyBindings": [
+    { "before": ["L"], "after": ["$"] },
+    { "before": ["H"], "after": ["^"] }
+  ],
+  "vim.visualModeKeyBindingsNonRecursive": [
+    { "before": ["p"], "after": ["P"] },
+    { "before": [">"], "commands": ["editor.action.indentLines"] },
+    { "before": ["<"], "commands": ["editor.action.outdentLines"] }
+  ],
+  "vim.normalModeKeyBindingsNonRecursive": [
+    { "before": ["<leader>", "d"], "after": ["d", "d"] },
+    { "before": ["n"], "after": ["n", "z", "z"] },
+    { "before": ["N"], "after": ["N", "z", "z"] },
+    { "before": ["<C-d>"], "after": ["<C-d>", "z", "z"] },
+    { "before": ["<C-u>"], "after": ["<C-u>", "z", "z"] },
+    { "before": ["<C-n>"], "commands": [":nohl"] },
+    { "before": ["K"], "commands": ["lineBreakInsert"], "silent": true },
+    { "before": ["<leader>", "w"], "commands": ["workbench.action.splitEditor"] },
+    { "before": ["<leader>", "w", "w"], "commands": [":w"] },
+    { "before": ["<leader>", "w", "c"], "commands": ["workbench.action.closeActiveEditor"] },
+    { "before": ["<leader>", "e"], "commands": ["workbench.action.toggleSidebarVisibility"] },
+    { "before": ["<leader>", "f"], "commands": ["revealInExplorer"] },
+    { "before": ["<leader>", "f", "y"], "commands": ["copyFilePath"] },
+    { "before": ["<leader>", "f", "n"], "commands": ["workbench.action.files.newUntitledFile"] },
+    { "before": ["<leader>", "c"], "commands": ["editor.action.commentLine"] },
+    { "before": ["g", "t"], "commands": ["workbench.action.nextEditor"] },
+    { "before": ["g", "T"], "commands": ["workbench.action.previousEditor"] },
+    { "before": ["g", "i"], "commands": ["editor.action.goToImplementation"] },
+    { "before": ["g", "r"], "commands": ["editor.action.goToReferences"] },
+    { "before": ["<leader>", "m"], "commands": ["workbench.action.maximizeEditor"] },
+    { "before": ["<leader>", "M"], "commands": ["workbench.action.evenEditorWidths"] },
+    { "before": ["<leader>", "q"], "commands": ["editor.action.quickFix"] },
+    { "before": ["<leader>", "t"], "commands": ["workbench.action.toggleTerminal"] },
+    { "before": ["<leader>", "p"], "commands": ["workbench.action.togglePanel"] }
+  ],
+  "vim.visualModeKeyBindings": [
+    { "before": ["<leader>", "c"], "commands": ["editor.action.commentLine", "extension.vim_escape"] },
+    { "before": ["<leader>", "a"], "commands": ["editor.action.selectHighlights"] },
+    { "before": ["<leader>", "s", "s"], "commands": ["editor.action.sortLinesAscending"] },
+    { "before": ["<leader>", "u"], "commands": ["editor.action.transformToUppercase"] },
+    { "before": ["<leader>", "l"], "commands": ["editor.action.transformToLowercase"] },
+    { "before": ["u"], "commands": ["undo"] },
+    { "before": ["<C-r>"], "commands": ["redo"] }
+  ],
+
+  // ------------------------------------
+  //  Security, Telemetry & Performance
+  // ------------------------------------
+  "security.workspace.trust.untrustedFiles": "open",
+  "telemetry.telemetryLevel": "off",
+  "MATLAB.telemetry": false,
+  "redhat.telemetry.enabled": false,
+  "gitlens.telemetry.enabled": false,
+  "extensions.experimental.affinity": {
+    "vscodevim.vim": 1
+  },
+  "diffEditor.ignoreTrimWhitespace": false,
+  "chat.mcp.gallery.enabled": true,
+  "chat.tools.urls.autoApprove": {
+    "https://nextjs.org": {
+      "approveRequest": false,
+      "approveResponse": true
+    }
+  },
+  "workbench.colorTheme": "Tsoding Gruber Darker"
+}

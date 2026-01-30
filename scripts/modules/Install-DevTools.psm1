@@ -3,6 +3,8 @@ function Install-DevTools {
 
     Install-Software -Name "Windows Terminal" -ExecutableName "wt"         -WingetId "Microsoft.WindowsTerminal"      -ChocoId "microsoft-windows-terminal" -ScoopId "main/windows-terminal"
     Install-Software -Name "PowerShell 7"     -ExecutableName "pwsh"       -WingetId "Microsoft.PowerShell"           -ChocoId "powershell-core"            -ScoopId "main/pwsh"
+    Install-Software -Name "VS Code"          -ExecutableName "code"       -WingetId "Microsoft.VisualStudioCode"     -ChocoId "vscode"                     -ScoopId "extras/vscode"
+    Install-Software -Name "Neovim"           -ExecutableName "nvim"       -WingetId "Neovim.Neovim"                  -ChocoId "neovim"                     -ScoopId "main/neovim"
     Install-Software -Name "fzf"              -ExecutableName "fzf"        -WingetId "junegunn.fzf"                   -ChocoId "fzf"                        -ScoopId "main/fzf"
     Install-Software -Name "zoxide"           -ExecutableName "zoxide"     -WingetId "ajeetdsouza.zoxide"             -ChocoId "zoxide"                     -ScoopId "main/zoxide"
     Install-Software -Name "ripgrep"          -ExecutableName "rg"         -WingetId "BurntSushi.ripgrep.MSVC"        -ChocoId "ripgrep"                    -ScoopId "main/ripgrep"
