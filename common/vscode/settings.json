@@ -1,15 +1,17 @@
 {
-  // -----------------
-  //  Minimalist UI
-  // -----------------
-  "window.commandCenter": false, // Hides the top search bar/command center
-  "workbench.layoutControl.enabled": false, // Hides the layout control buttons (top right)
-  "window.menuBarVisibility": "toggle", // Hides menu bar (press Alt to show)
+  // ----
+  //  UI
+  // ----
+  "window.commandCenter": false,
+  "workbench.layoutControl.enabled": false,
+  "window.menuBarVisibility": "toggle",
   "window.titleBarStyle": "custom", // "custom" merges title bar with window; "native" adds a system bar on Windows
   "workbench.activityBar.location": "top",
   "workbench.statusBar.visible": true,
   "workbench.editor.empty.hint": "hidden",
   "workbench.startupEditor": "none",
+  "window.titleSeparator": " ",
+  "workbench.colorTheme": "Tsoding Gruber Darker",
   "workbench.productIconTheme": "material-product-icons",
   "workbench.iconTheme": "material-icon-theme",
   "workbench.editor.limit.enabled": true,
@@ -21,7 +23,7 @@
   // -----------------
   "editor.fontSize": 18,
   "editor.fontFamily": "'Iosevka Nerd Font', 'Iosevka Nerd Font Mono', Consolas, Menlo, 'Courier New', monospace",
-  "editor.fontLigatures": true, // Can be set to string (e.g. "'ss01', 'cv01'") for specific font features
+  "editor.fontLigatures": true,
   "editor.minimap.enabled": false,
   "editor.lineNumbers": "relative",
   "editor.scrollBeyondLastLine": false,
@@ -35,6 +37,15 @@
   "editor.renderWhitespace": "boundary",
   "editor.bracketPairColorization.enabled": false,
   "editor.guides.bracketPairs": "active",
+  "editor.hideCursorInOverviewRuler": true,
+  "editor.overviewRulerBorder": false,
+  "editor.cursorBlinking": "blink",
+  "editor.cursorSmoothCaretAnimation": "off",
+  "editor.gotoLocation.multipleDefinitions": "goto",
+  "editor.gotoLocation.multipleDeclarations": "goto",
+  "editor.gotoLocation.multipleTypeDefinitions": "goto",
+  "editor.gotoLocation.multipleImplementations": "peek",
+  "editor.gotoLocation.multipleReferences": "peek",
   "editor.linkedEditing": true,
   "editor.experimental.asyncTokenization": true,
   "editor.tabSize": 4,
@@ -164,6 +175,13 @@
   },
   "github.copilot.nextEditSuggestions.enabled": true,
   "chat.agent.enabled": true,
+  "chat.mcp.gallery.enabled": true,
+  "chat.tools.urls.autoApprove": {
+    "https://nextjs.org": {
+      "approveRequest": false,
+      "approveResponse": true
+    }
+  },
 
   // --- Remote SSH ---
   "remote.SSH.remotePlatform": {
@@ -256,13 +274,5 @@
   "extensions.experimental.affinity": {
     "vscodevim.vim": 1
   },
-  "diffEditor.ignoreTrimWhitespace": false,
-  "chat.mcp.gallery.enabled": true,
-  "chat.tools.urls.autoApprove": {
-    "https://nextjs.org": {
-      "approveRequest": false,
-      "approveResponse": true
-    }
-  },
-  "workbench.colorTheme": "Tsoding Gruber Darker"
+  "diffEditor.ignoreTrimWhitespace": false
 }

@@ -9,22 +9,22 @@
   // WINDOW MANAGEMENT
   //==============================================================================
   {
-    "key": "ctrl+alt+l",
+    "key": "alt+l",
     "command": "workbench.action.focusRightGroup",
     "when": "editorTextFocus"
   },
   {
-    "key": "ctrl+alt+h",
+    "key": "alt+h",
     "command": "workbench.action.focusLeftGroup",
     "when": "editorTextFocus"
   },
   {
-    "key": "ctrl+alt+k",
+    "key": "alt+k",
     "command": "workbench.action.focusAboveGroup",
     "when": "editorTextFocus"
   },
   {
-    "key": "ctrl+alt+j",
+    "key": "alt+j",
     "command": "workbench.action.focusBelowGroup",
     "when": "editorTextFocus"
   },
