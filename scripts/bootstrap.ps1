@@ -4,7 +4,8 @@ param(
     [string]$OriginalLocalAppData,
     [ValidateSet('Auto', 'User', 'Admin')]
     [string]$Phase = 'Auto',
-    [switch]$AdminManifestOnly
+    [switch]$AdminManifestOnly,
+    [string]$LogPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -53,6 +54,20 @@ $libDir = Join-Path $PSScriptRoot "lib"
 $env:PSModulePath = $libDir + [IO.Path]::PathSeparator + $env:PSModulePath
 
 Import-Module (Join-Path $libDir "Common.psm1") -Force
+
+if ([string]::IsNullOrWhiteSpace($LogPath)) {
+    if (-not [string]::IsNullOrWhiteSpace($env:DOTFILES_LOG_PATH)) {
+        $LogPath = $env:DOTFILES_LOG_PATH
+    }
+    else {
+        $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+        $LogPath = Join-Path $env:TEMP "dotfiles-bootstrap-$timestamp.log"
+    }
+}
+$env:DOTFILES_LOG_PATH = $LogPath
+Start-SetupTranscript -LogPath $LogPath
+Write-LogInfo "Log file: $LogPath"
+Write-LogInfo ("Session: Phase={0} PID={1} PS={2} Admin={3}" -f $Phase, $PID, $PSVersionTable.PSVersion, (Test-IsAdmin))
 
 if ($OriginalUserProfile) {
     Write-LogInfo "Original user context: $OriginalUserProfile"
@@ -148,6 +163,10 @@ if ($PSVersionTable.PSVersion.Major -lt 7) {
     if ($AdminManifestOnly) {
         $scriptArgs += "-AdminManifestOnly"
     }
+    if ($LogPath) {
+        $scriptArgs += @("-LogPath", "`"$LogPath`"")
+    }
+    Stop-SetupTranscript
     Start-Process pwsh -ArgumentList $scriptArgs
     exit
 }
@@ -224,7 +243,11 @@ function Invoke-AdminElevation {
 
         $scriptArgs = @("-NoExit", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$PSCommandPath`"", "-Phase", "Admin", "-AdminManifestOnly")
         $scriptArgs += @("-OriginalUserProfile", "`"$env:USERPROFILE`"", "-OriginalAppData", "`"$env:APPDATA`"", "-OriginalLocalAppData", "`"$env:LOCALAPPDATA`"")
+        if ($LogPath) {
+            $scriptArgs += @("-LogPath", "`"$LogPath`"")
+        }
 
+        Stop-SetupTranscript
         Start-Process $exe -ArgumentList $scriptArgs -Verb RunAs
         return $true
     }
@@ -245,6 +268,7 @@ try {
     switch ($Phase) {
         'User' {
             Invoke-UserSetup
+            Stop-SetupTranscript
             Show-ExitPrompt
         }
         'Admin' {
@@ -253,16 +277,19 @@ try {
                 throw "Administrator privileges are required to run the admin phase."
             }
             Invoke-AdminSetup
+            Stop-SetupTranscript
             Show-ExitPrompt
         }
         default {
             if ($isAdmin) {
                 Invoke-UserSetup
+                Stop-SetupTranscript
                 Show-ExitPrompt
             }
             else {
                 Invoke-UserSetup
                 Invoke-AdminElevation | Out-Null
+                Stop-SetupTranscript
                 Show-ExitPrompt
             }
         }
@@ -270,6 +297,7 @@ try {
 }
 catch {
     Write-LogError "Setup failed: $_"
+    Stop-SetupTranscript
     Write-Host "`nPress any key to exit..." -ForegroundColor Gray
     $null = [Console]::ReadKey($true)
     return

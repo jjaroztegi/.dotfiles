@@ -186,6 +186,41 @@ function Ensure-StandardPaths {
     return $updated
 }
 
+function Start-SetupTranscript {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$LogPath
+    )
+
+    if ([string]::IsNullOrWhiteSpace($LogPath)) {
+        return
+    }
+
+    try {
+        if ($global:TranscriptRunning) {
+            return
+        }
+        Start-Transcript -Path $LogPath -Append -ErrorAction Stop | Out-Null
+        $global:TranscriptRunning = $true
+    }
+    catch {
+        # Ignore transcript start failures (e.g., already running or no permission)
+    }
+}
+
+function Stop-SetupTranscript {
+    try {
+        if ($global:TranscriptRunning) {
+            Stop-Transcript | Out-Null
+            $global:TranscriptRunning = $false
+        }
+    }
+    catch {
+        # Ignore stop failures (e.g., no transcript running)
+    }
+}
+
 Export-ModuleMember -Function Test-InternetConnection, Test-IsAdmin, Test-SymlinkCapability, Update-Path, `
     Test-CommandAvailable, Get-CommandProbeArgs, Test-CommandAccessible, Ensure-PathEntry, Ensure-StandardPaths, `
+    Start-SetupTranscript, Stop-SetupTranscript, `
     Write-Log, Write-LogOK, Write-LogInfo, Write-LogWarn, Write-LogError, Write-LogSkip, Write-LogBackup, Write-LogDryRun
