@@ -77,6 +77,50 @@ function Test-CommandAvailable {
     return [bool](Get-Command $Name -ErrorAction SilentlyContinue)
 }
 
+function Get-CommandProbeArgs {
+    param([string]$Name)
+
+    $defaultArgs = @("--version")
+
+    if ([string]::IsNullOrWhiteSpace($Name)) {
+        return $defaultArgs
+    }
+
+    $overrides = @{
+        "winfetch" = @("--help")
+        "wt"       = @("--version")
+    }
+
+    if ($overrides.ContainsKey($Name)) {
+        return $overrides[$Name]
+    }
+
+    return $defaultArgs
+}
+
+function Test-CommandAccessible {
+    param([string]$Name)
+
+    if ([string]::IsNullOrWhiteSpace($Name)) {
+        return $false
+    }
+
+    $cmd = Get-Command $Name -ErrorAction SilentlyContinue
+    if (-not $cmd) {
+        return $false
+    }
+
+    $args = Get-CommandProbeArgs -Name $Name
+    try {
+        $filePath = if ($cmd.Path) { $cmd.Path } else { $Name }
+        $proc = Start-Process -FilePath $filePath -ArgumentList $args -NoNewWindow -Wait -PassThru -ErrorAction Stop
+        return ($proc.ExitCode -eq 0)
+    }
+    catch {
+        return $false
+    }
+}
+
 function Ensure-PathEntry {
     param(
         [Parameter(Mandatory = $true)]
@@ -143,5 +187,5 @@ function Ensure-StandardPaths {
 }
 
 Export-ModuleMember -Function Test-InternetConnection, Test-IsAdmin, Test-SymlinkCapability, Update-Path, `
-    Test-CommandAvailable, Ensure-PathEntry, Ensure-StandardPaths, `
+    Test-CommandAvailable, Get-CommandProbeArgs, Test-CommandAccessible, Ensure-PathEntry, Ensure-StandardPaths, `
     Write-Log, Write-LogOK, Write-LogInfo, Write-LogWarn, Write-LogError, Write-LogSkip, Write-LogBackup, Write-LogDryRun

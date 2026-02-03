@@ -59,10 +59,6 @@ function Test-SoftwareInstalled {
         [string]$ChocoId
     )
 
-    if ($ExecutableName -and (Get-Command $ExecutableName -ErrorAction SilentlyContinue)) {
-        return $true
-    }
-
     if ($WingetId -and (Get-Command winget -ErrorAction SilentlyContinue)) {
         $wingetList = winget list --id $WingetId --exact --accept-source-agreements 2>$null
         if ($LASTEXITCODE -eq 0 -and $wingetList -notmatch "No installed package") {
@@ -100,14 +96,51 @@ function Install-Software {
 
     $isAdmin = Test-IsAdmin
 
-    if (Test-SoftwareInstalled -Name $Name -ExecutableName $ExecutableName -WingetId $WingetId -ChocoId $ChocoId) {
-        Write-LogSkip "$Name is already installed."
-        return
+    if ($ExecutableName) {
+        if (Test-CommandAccessible -Name $ExecutableName) {
+            Write-LogSkip "$Name is already installed and accessible."
+            return
+        }
+
+        $resolved = Get-Command $ExecutableName -ErrorAction SilentlyContinue
+        if ($resolved) {
+            $resolvedPath = if ($resolved.Path) { $resolved.Path } else { $resolved.Source }
+            Write-LogWarn "Command '$ExecutableName' resolved to '$resolvedPath' but is not accessible."
+            $whereResults = & where.exe $ExecutableName 2>$null
+            if ($whereResults) {
+                Write-LogWarn "where.exe results: $($whereResults -join '; ')"
+            }
+        }
+        else {
+            $whereResults = & where.exe $ExecutableName 2>$null
+            if ($whereResults) {
+                Write-LogWarn "where.exe results: $($whereResults -join '; ')"
+            }
+        }
+
+        if ($WingetId -and (Get-Command winget -ErrorAction SilentlyContinue)) {
+            $wingetList = winget list --id $WingetId --exact --accept-source-agreements 2>$null
+            if ($LASTEXITCODE -eq 0 -and $wingetList -notmatch "No installed package") {
+                Write-LogWarn "Winget reports '$Name' installed, but it is not accessible to the current user. Reinstalling..."
+            }
+        }
+        elseif ($ChocoId -and (Get-Command choco -ErrorAction SilentlyContinue)) {
+            $chocoList = choco list --local-only --exact --id-only -r $ChocoId 2>$null
+            if ($chocoList -contains $ChocoId) {
+                Write-LogWarn "Chocolatey reports '$Name' installed, but it is not accessible to the current user. Reinstalling..."
+            }
+        }
+    }
+    else {
+        if (Test-SoftwareInstalled -Name $Name -ExecutableName $null -WingetId $WingetId -ChocoId $ChocoId) {
+            Write-LogSkip "$Name is already installed."
+            return
+        }
     }
 
     # Installer priority based on privilege level:
     # Admin: Winget -> Chocolatey
-    # User: Scoop -> Winget (User scope)
+    # User: Winget (User scope) -> Scoop
 
     if ($isAdmin) {
         if ($WingetId -and (Get-Command winget -ErrorAction SilentlyContinue)) {
@@ -141,21 +174,6 @@ function Install-Software {
         }
     }
     else {
-        if ($ScoopId -and (Get-Command scoop -ErrorAction SilentlyContinue)) {
-            if ($PSCmdlet.ShouldProcess($Name, "Install via Scoop")) {
-                Write-LogInfo "Installing $Name via Scoop..."
-                scoop install $ScoopId
-                if ($LASTEXITCODE -eq 0) {
-                    Write-LogOK "Installed $Name"
-                    Ensure-StandardPaths -IsAdmin $false | Out-Null
-                }
-                else {
-                    Write-LogError "Failed to install $Name via Scoop"
-                }
-            }
-            return
-        }
-
         if ($WingetId -and (Get-Command winget -ErrorAction SilentlyContinue)) {
             if ($PSCmdlet.ShouldProcess($Name, "Install via Winget (User)")) {
                 Write-LogInfo "Installing $Name via Winget (User scope)..."
@@ -166,6 +184,21 @@ function Install-Software {
                 }
                 else {
                     Write-LogError "Failed to install $Name via Winget"
+                }
+            }
+            return
+        }
+
+        if ($ScoopId -and (Get-Command scoop -ErrorAction SilentlyContinue)) {
+            if ($PSCmdlet.ShouldProcess($Name, "Install via Scoop")) {
+                Write-LogInfo "Installing $Name via Scoop..."
+                scoop install $ScoopId
+                if ($LASTEXITCODE -eq 0) {
+                    Write-LogOK "Installed $Name"
+                    Ensure-StandardPaths -IsAdmin $false | Out-Null
+                }
+                else {
+                    Write-LogError "Failed to install $Name via Scoop"
                 }
             }
             return
