@@ -1,7 +1,10 @@
 param(
     [string]$OriginalUserProfile,
     [string]$OriginalAppData,
-    [string]$OriginalLocalAppData
+    [string]$OriginalLocalAppData,
+    [ValidateSet('Auto', 'User', 'Admin')]
+    [string]$Phase = 'Auto',
+    [switch]$AdminManifestOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -51,13 +54,8 @@ $env:PSModulePath = $libDir + [IO.Path]::PathSeparator + $env:PSModulePath
 
 Import-Module (Join-Path $libDir "Common.psm1") -Force
 
-# Restore original user profile when running elevated
 if ($OriginalUserProfile) {
-    Write-LogInfo "Restoring original user context: $OriginalUserProfile"
-    $env:USERPROFILE = $OriginalUserProfile
-    $env:HOME = $OriginalUserProfile
-    $env:APPDATA = $OriginalAppData
-    $env:LOCALAPPDATA = $OriginalLocalAppData
+    Write-LogInfo "Original user context: $OriginalUserProfile"
 }
 
 # Enforce TLS 1.2
@@ -144,25 +142,14 @@ if ($PSVersionTable.PSVersion.Major -lt 7) {
     if ($OriginalUserProfile) {
         $scriptArgs += @("-OriginalUserProfile", "`"$OriginalUserProfile`"", "-OriginalAppData", "`"$OriginalAppData`"", "-OriginalLocalAppData", "`"$OriginalLocalAppData`"")
     }
+    if ($Phase) {
+        $scriptArgs += @("-Phase", $Phase)
+    }
+    if ($AdminManifestOnly) {
+        $scriptArgs += "-AdminManifestOnly"
+    }
     Start-Process pwsh -ArgumentList $scriptArgs
     exit
-}
-
-if (-not (Test-IsAdmin)) {
-    Write-LogWarn "Running as standard user. System installations require Admin privileges."
-
-    $choice = Read-Host "Do you want to restart with Administrator privileges? (y/N)"
-    if ($choice -match '^[Yy]$') {
-        $exe = if (Get-Command pwsh -ErrorAction SilentlyContinue) { "pwsh" } else { "powershell" }
-        Write-LogInfo "Restarting elevated..."
-
-        $scriptArgs = @("-NoExit", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$PSCommandPath`"")
-        # Pass current user context to the admin process
-        $scriptArgs += @("-OriginalUserProfile", "`"$env:USERPROFILE`"", "-OriginalAppData", "`"$env:APPDATA`"", "-OriginalLocalAppData", "`"$env:LOCALAPPDATA`"")
-
-        Start-Process $exe -ArgumentList $scriptArgs -Verb RunAs
-        exit
-    }
 }
 
 Import-Module (Join-Path $modulesDir "Install-PackageManagers.psm1") -Force
@@ -171,8 +158,8 @@ Import-Module (Join-Path $modulesDir "Install-Fonts.psm1") -Force
 Import-Module (Join-Path $modulesDir "Install-PowerShellModules.psm1") -Force
 Import-Module (Join-Path $modulesDir "Configure-WindowsTerminal.psm1") -Force
 
-try {
-    Write-LogInfo "Starting Setup..."
+function Invoke-UserSetup {
+    Write-LogInfo "Starting User Setup..."
 
     if (-not (Test-InternetConnection)) {
         throw "Internet connection required."
@@ -198,27 +185,88 @@ try {
     }
 
     Install-NerdFonts
-
     Install-PowerShellModules -Modules @("Terminal-Icons", "posh-git", "PSFzf")
 
     Write-LogInfo "`n--- Deploying Dotfiles ---"
-    $deployParams = @{}
-    if ($OriginalUserProfile) {
-        $deployParams['OriginalUserProfile'] = $OriginalUserProfile
-        $deployParams['OriginalAppData'] = $OriginalAppData
-        $deployParams['OriginalLocalAppData'] = $OriginalLocalAppData
-    }
-    & (Join-Path $PSScriptRoot "deploy.ps1") @deployParams
+    & (Join-Path $PSScriptRoot "deploy.ps1") -ContinueOnAccessDenied
 
     Write-LogInfo "`n--- Configuring Windows Terminal ---"
     Set-WindowsTerminalDefaults
 
-    Write-LogOK "`nSetup Completed Successfully!"
-    Write-LogInfo "Please restart your terminal."
+    Ensure-StandardPaths -IsAdmin (Test-IsAdmin) | Out-Null
 
+    Write-LogOK "`nUser Setup Completed Successfully!"
+}
+
+function Invoke-AdminSetup {
+    Write-LogInfo "Starting Admin Setup..."
+
+    if (-not (Test-InternetConnection)) {
+        throw "Internet connection required."
+    }
+
+    Install-PackageManagers
+
+    Write-LogInfo "`n--- Deploying Protected Dotfiles ---"
+    & (Join-Path $PSScriptRoot "deploy.ps1") -OnlyProtectedPaths
+
+    Ensure-StandardPaths -IsAdmin $true | Out-Null
+
+    Write-LogOK "`nAdmin Setup Completed Successfully!"
+}
+
+function Invoke-AdminElevation {
+    Write-LogWarn "Running as standard user. System installations require Admin privileges."
+    $choice = Read-Host "Do you want to restart with Administrator privileges? (y/N)"
+    if ($choice -match '^[Yy]$') {
+        $exe = if (Get-Command pwsh -ErrorAction SilentlyContinue) { "pwsh" } else { "powershell" }
+        Write-LogInfo "Restarting elevated..."
+
+        $scriptArgs = @("-NoExit", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$PSCommandPath`"", "-Phase", "Admin", "-AdminManifestOnly")
+        $scriptArgs += @("-OriginalUserProfile", "`"$env:USERPROFILE`"", "-OriginalAppData", "`"$env:APPDATA`"", "-OriginalLocalAppData", "`"$env:LOCALAPPDATA`"")
+
+        Start-Process $exe -ArgumentList $scriptArgs -Verb RunAs
+        return $true
+    }
+    return $false
+}
+
+function Show-ExitPrompt {
+    Write-LogInfo "Please restart your terminal."
     Write-Host "`nPress any key to exit..." -ForegroundColor Gray
     $null = [Console]::ReadKey($true)
+}
 
+try {
+    Write-LogInfo "Starting Setup..."
+
+    $isAdmin = Test-IsAdmin
+
+    switch ($Phase) {
+        'User' {
+            Invoke-UserSetup
+            Show-ExitPrompt
+        }
+        'Admin' {
+            if (-not $isAdmin) {
+                if (Invoke-AdminElevation) { return }
+                throw "Administrator privileges are required to run the admin phase."
+            }
+            Invoke-AdminSetup
+            Show-ExitPrompt
+        }
+        default {
+            if ($isAdmin) {
+                Invoke-UserSetup
+                Show-ExitPrompt
+            }
+            else {
+                Invoke-UserSetup
+                Invoke-AdminElevation | Out-Null
+                Show-ExitPrompt
+            }
+        }
+    }
 }
 catch {
     Write-LogError "Setup failed: $_"

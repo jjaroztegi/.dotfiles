@@ -67,5 +67,81 @@ function Update-Path {
     $env:Path = "$machinePath;$userPath"
 }
 
+function Test-CommandAvailable {
+    param([string]$Name)
+
+    if ([string]::IsNullOrWhiteSpace($Name)) {
+        return $false
+    }
+
+    return [bool](Get-Command $Name -ErrorAction SilentlyContinue)
+}
+
+function Ensure-PathEntry {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Entry,
+        [ValidateSet('User', 'Machine')]
+        [string]$Scope = 'User'
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Entry)) {
+        return $false
+    }
+
+    $current = [System.Environment]::GetEnvironmentVariable("Path", $Scope)
+    $parts = @()
+    if (-not [string]::IsNullOrWhiteSpace($current)) {
+        $parts = $current.Split(';') | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    }
+
+    if ($parts -contains $Entry) {
+        return $false
+    }
+
+    $newPath = if ($parts.Count -gt 0) { ($parts + $Entry) -join ';' } else { $Entry }
+    [System.Environment]::SetEnvironmentVariable("Path", $newPath, $Scope)
+    return $true
+}
+
+function Ensure-StandardPaths {
+    param(
+        [bool]$IsAdmin = $false
+    )
+
+    $updated = $false
+
+    # Always ensure WindowsApps for current user.
+    $windowsApps = Join-Path $env:LOCALAPPDATA "Microsoft\WindowsApps"
+    if (Ensure-PathEntry -Entry $windowsApps -Scope User) {
+        $updated = $true
+    }
+
+    # Ensure Scoop shims if Scoop is present.
+    $scoopShims = Join-Path $env:USERPROFILE "scoop\shims"
+    if (Test-Path $scoopShims) {
+        if (Ensure-PathEntry -Entry $scoopShims -Scope User) {
+            $updated = $true
+        }
+    }
+
+    # Ensure Chocolatey bin for machine scope if running admin and choco is installed.
+    if ($IsAdmin -and (Get-Command choco -ErrorAction SilentlyContinue)) {
+        $chocoBin = Join-Path $env:ProgramData "chocolatey\bin"
+        if (Test-Path $chocoBin) {
+            if (Ensure-PathEntry -Entry $chocoBin -Scope Machine) {
+                $updated = $true
+            }
+        }
+    }
+
+    if ($updated) {
+        Update-Path
+    }
+
+    return $updated
+}
+
 Export-ModuleMember -Function Test-InternetConnection, Test-IsAdmin, Test-SymlinkCapability, Update-Path, `
+    Test-CommandAvailable, Ensure-PathEntry, Ensure-StandardPaths, `
     Write-Log, Write-LogOK, Write-LogInfo, Write-LogWarn, Write-LogError, Write-LogSkip, Write-LogBackup, Write-LogDryRun

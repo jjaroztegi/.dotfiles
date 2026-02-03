@@ -30,6 +30,8 @@ function Install-PackageManagers {
                 Write-LogError "Failed to install Chocolatey: $_"
             }
         }
+
+        Ensure-StandardPaths -IsAdmin $true | Out-Null
     }
     else {
         Write-LogInfo "Running as User. Verifying Scoop..."
@@ -44,6 +46,8 @@ function Install-PackageManagers {
                 Write-LogError "Failed to install Scoop: $_"
             }
         }
+
+        Ensure-StandardPaths -IsAdmin $false | Out-Null
     }
 }
 
@@ -110,7 +114,13 @@ function Install-Software {
             if ($PSCmdlet.ShouldProcess($Name, "Install via Winget (Admin)")) {
                 Write-LogInfo "Installing $Name via Winget..."
                 winget install --id $WingetId -e --silent --disable-interactivity --accept-source-agreements --accept-package-agreements --source winget
-                if ($LASTEXITCODE -eq 0) { Write-LogOK "Installed $Name" } else { Write-LogError "Failed to install $Name via Winget" }
+                if ($LASTEXITCODE -eq 0) {
+                    Write-LogOK "Installed $Name"
+                    Ensure-StandardPaths -IsAdmin $true | Out-Null
+                }
+                else {
+                    Write-LogError "Failed to install $Name via Winget"
+                }
             }
             return
         }
@@ -119,7 +129,13 @@ function Install-Software {
             if ($PSCmdlet.ShouldProcess($Name, "Install via Chocolatey")) {
                 Write-LogInfo "Installing $Name via Chocolatey..."
                 choco install $ChocoId -y
-                if ($LASTEXITCODE -eq 0) { Write-LogOK "Installed $Name" } else { Write-LogError "Failed to install $Name via Chocolatey" }
+                if ($LASTEXITCODE -eq 0) {
+                    Write-LogOK "Installed $Name"
+                    Ensure-StandardPaths -IsAdmin $true | Out-Null
+                }
+                else {
+                    Write-LogError "Failed to install $Name via Chocolatey"
+                }
             }
             return
         }
@@ -129,7 +145,13 @@ function Install-Software {
             if ($PSCmdlet.ShouldProcess($Name, "Install via Scoop")) {
                 Write-LogInfo "Installing $Name via Scoop..."
                 scoop install $ScoopId
-                if ($LASTEXITCODE -eq 0) { Write-LogOK "Installed $Name" } else { Write-LogError "Failed to install $Name via Scoop" }
+                if ($LASTEXITCODE -eq 0) {
+                    Write-LogOK "Installed $Name"
+                    Ensure-StandardPaths -IsAdmin $false | Out-Null
+                }
+                else {
+                    Write-LogError "Failed to install $Name via Scoop"
+                }
             }
             return
         }
@@ -138,7 +160,13 @@ function Install-Software {
             if ($PSCmdlet.ShouldProcess($Name, "Install via Winget (User)")) {
                 Write-LogInfo "Installing $Name via Winget (User scope)..."
                 winget install --id $WingetId -e --silent --disable-interactivity --accept-source-agreements --accept-package-agreements --scope user --source winget
-                if ($LASTEXITCODE -eq 0) { Write-LogOK "Installed $Name" } else { Write-LogError "Failed to install $Name via Winget" }
+                if ($LASTEXITCODE -eq 0) {
+                    Write-LogOK "Installed $Name"
+                    Ensure-StandardPaths -IsAdmin $false | Out-Null
+                }
+                else {
+                    Write-LogError "Failed to install $Name via Winget"
+                }
             }
             return
         }

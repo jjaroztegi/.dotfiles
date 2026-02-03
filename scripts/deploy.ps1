@@ -4,7 +4,9 @@
 param(
     [string]$OriginalUserProfile,
     [string]$OriginalAppData,
-    [string]$OriginalLocalAppData
+    [string]$OriginalLocalAppData,
+    [switch]$OnlyProtectedPaths,
+    [switch]$ContinueOnAccessDenied
 )
 
 $ErrorActionPreference = 'Stop'
@@ -84,12 +86,26 @@ try {
         throw "Manifest not found: $manifestPath"
     }
 
-    $deployParams = @{ ManifestFile = $manifestPath }
+    $deployParams = @{
+        ManifestFile = $manifestPath
+    }
     if ($PSBoundParameters.ContainsKey('WhatIf')) {
         $deployParams['WhatIf'] = $true
     }
+    if ($OnlyProtectedPaths) {
+        $deployParams['OnlyProtectedPaths'] = $true
+    }
+    if ($ContinueOnAccessDenied) {
+        $deployParams['ContinueOnAccessDenied'] = $true
+    }
 
-    Deploy-Manifest @deployParams
+    $summary = Deploy-Manifest @deployParams
+    if ($summary -and $summary.SkippedAccess -and $summary.SkippedAccess.Count -gt 0) {
+        Write-LogWarn "Skipped $($summary.SkippedAccess.Count) entries due to access denied."
+        foreach ($entry in $summary.SkippedAccess) {
+            Write-LogWarn "  - $($entry.Source) -> $($entry.Destination)"
+        }
+    }
 
     Write-LogOK "`nDeployment completed successfully!"
 

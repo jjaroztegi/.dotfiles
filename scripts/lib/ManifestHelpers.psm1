@@ -73,6 +73,52 @@ function Resolve-DynamicPath {
     return $Path
 }
 
+function Test-ProtectedPath {
+    param([string]$Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $false
+    }
+
+    $protectedRoots = @(
+        $env:ProgramFiles,
+        ${env:ProgramFiles(x86)},
+        $env:ProgramData,
+        $env:WinDir,
+        $env:SystemRoot
+    ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+
+    foreach ($root in $protectedRoots) {
+        $rootNormalized = $root.TrimEnd('\')
+        if ($Path.StartsWith($rootNormalized, [System.StringComparison]::InvariantCultureIgnoreCase)) {
+            return $true
+        }
+    }
+
+    return $false
+}
+
+function Test-IsAccessDeniedError {
+    param($ErrorRecord)
+
+    if (-not $ErrorRecord) {
+        return $false
+    }
+
+    $ex = $ErrorRecord.Exception
+    while ($ex) {
+        if ($ex -is [System.UnauthorizedAccessException]) {
+            return $true
+        }
+        if ($ex.Message -match 'access is denied') {
+            return $true
+        }
+        $ex = $ex.InnerException
+    }
+
+    return $false
+}
+
 function Get-DestinationPath {
     param(
         [string]$Source,
@@ -121,7 +167,9 @@ function Deploy-Manifest {
     [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory = $true)]
-        [string]$ManifestFile
+        [string]$ManifestFile,
+        [switch]$OnlyProtectedPaths,
+        [switch]$ContinueOnAccessDenied
     )
 
     if (-not (Test-SymlinkCapability)) {
@@ -132,6 +180,8 @@ function Deploy-Manifest {
 
     $manifestDir = Split-Path $ManifestFile -Parent
     $repoRoot = (Get-Item $manifestDir).Parent.FullName
+
+    $skippedAccess = New-Object System.Collections.Generic.List[object]
 
     Get-Content $ManifestFile | ForEach-Object {
         $line = $_.Trim()
@@ -168,64 +218,87 @@ function Deploy-Manifest {
             $operation = 'copy'
         }
 
-        if ($operation -eq 'copy') {
-            if (Test-Path $destPath) {
-                if ((Test-Path $destPath -PathType Leaf) -and (Test-Path $sourcePath -PathType Leaf)) {
-                    $sourceHash = (Get-FileHash $sourcePath -Algorithm MD5).Hash
-                    $destHash = (Get-FileHash $destPath -Algorithm MD5).Hash
-                    if ($sourceHash -eq $destHash) {
-                        Write-LogSkip "Already up to date: $destPath"
-                        return
+        if ($OnlyProtectedPaths -and -not (Test-ProtectedPath -Path $destPath)) {
+            Write-LogSkip "Skipping non-protected path: $destPath"
+            return
+        }
+
+        try {
+            if ($operation -eq 'copy') {
+                if (Test-Path $destPath) {
+                    if ((Test-Path $destPath -PathType Leaf) -and (Test-Path $sourcePath -PathType Leaf)) {
+                        $sourceHash = (Get-FileHash $sourcePath -Algorithm MD5).Hash
+                        $destHash = (Get-FileHash $destPath -Algorithm MD5).Hash
+                        if ($sourceHash -eq $destHash) {
+                            Write-LogSkip "Already up to date: $destPath"
+                            return
+                        }
+                    }
+
+                    if ($PSCmdlet.ShouldProcess($destPath, "Backup and Copy")) {
+                        $backup = "$destPath.bak"
+                        Write-LogBackup "Creating backup: $backup"
+                        if (Test-Path $backup) {
+                            Remove-Item -Path $backup -Recurse -Force
+                        }
+                        Move-Item -Path $destPath -Destination $backup -Force
+                        Copy-Item -Path $sourcePath -Destination $destPath -Recurse -Force
+                        Write-LogOK "Copied: $destPath"
                     }
                 }
-
-                if ($PSCmdlet.ShouldProcess($destPath, "Backup and Copy")) {
-                    $backup = "$destPath.bak"
-                    Write-LogBackup "Creating backup: $backup"
-                    if (Test-Path $backup) {
-                        Remove-Item -Path $backup -Recurse -Force
+                else {
+                    if ($PSCmdlet.ShouldProcess($destPath, "Copy")) {
+                        $destDir = Split-Path $destPath -Parent
+                        if (-not (Test-Path $destDir)) { New-Item -ItemType Directory -Path $destDir -Force | Out-Null }
+                        Copy-Item -Path $sourcePath -Destination $destPath -Recurse -Force
+                        Write-LogOK "Copied: $destPath"
                     }
-                    Move-Item -Path $destPath -Destination $backup -Force
-                    Copy-Item -Path $sourcePath -Destination $destPath -Recurse -Force
-                    Write-LogOK "Copied: $destPath"
                 }
             }
-            else {
-                if ($PSCmdlet.ShouldProcess($destPath, "Copy")) {
-                    $destDir = Split-Path $destPath -Parent
-                    if (-not (Test-Path $destDir)) { New-Item -ItemType Directory -Path $destDir -Force | Out-Null }
-                    Copy-Item -Path $sourcePath -Destination $destPath -Recurse -Force
-                    Write-LogOK "Copied: $destPath"
+            elseif ($operation -eq 'symlink') {
+                if (Test-Path $destPath) {
+                    if ((Get-Item $destPath).LinkType -eq 'SymbolicLink') {
+                        $currentTarget = (Get-Item $destPath).Target
+                        if ($currentTarget -match [regex]::Escape($sourcePath)) {
+                            Write-LogSkip "Symlink already correct: $destPath"
+                            return
+                        }
+                    }
+
+                    if ($PSCmdlet.ShouldProcess($destPath, "Backup and Symlink")) {
+                        $backup = "$destPath.bak"
+                        Write-LogBackup "Moving existing item to $backup"
+                        Move-Item -Path $destPath -Destination $backup -Force
+                        New-Item -ItemType SymbolicLink -Path $destPath -Target $sourcePath -Force | Out-Null
+                        Write-LogOK "Symlinked: $destPath -> $sourceRel"
+                    }
+                }
+                else {
+                    if ($PSCmdlet.ShouldProcess($destPath, "Symlink")) {
+                        $destDir = Split-Path $destPath -Parent
+                        if (-not (Test-Path $destDir)) { New-Item -ItemType Directory -Path $destDir -Force | Out-Null }
+                        New-Item -ItemType SymbolicLink -Path $destPath -Target $sourcePath -Force | Out-Null
+                        Write-LogOK "Symlinked: $destPath -> $sourceRel"
+                    }
                 }
             }
         }
-        elseif ($operation -eq 'symlink') {
-            if (Test-Path $destPath) {
-                if ((Get-Item $destPath).LinkType -eq 'SymbolicLink') {
-                    $currentTarget = (Get-Item $destPath).Target
-                    if ($currentTarget -match [regex]::Escape($sourcePath)) {
-                        Write-LogSkip "Symlink already correct: $destPath"
-                        return
-                    }
-                }
-
-                if ($PSCmdlet.ShouldProcess($destPath, "Backup and Symlink")) {
-                    $backup = "$destPath.bak"
-                    Write-LogBackup "Moving existing item to $backup"
-                    Move-Item -Path $destPath -Destination $backup -Force
-                    New-Item -ItemType SymbolicLink -Path $destPath -Target $sourcePath -Force | Out-Null
-                    Write-LogOK "Symlinked: $destPath -> $sourceRel"
-                }
+        catch {
+            if ($ContinueOnAccessDenied -and (Test-IsAccessDeniedError -ErrorRecord $_)) {
+                Write-LogWarn "Access denied for '$destPath'. Skipping."
+                $skippedAccess.Add([pscustomobject]@{
+                        Source      = $sourceRel
+                        Operation   = $operation
+                        Destination = $destPath
+                    }) | Out-Null
+                return
             }
-            else {
-                if ($PSCmdlet.ShouldProcess($destPath, "Symlink")) {
-                    $destDir = Split-Path $destPath -Parent
-                    if (-not (Test-Path $destDir)) { New-Item -ItemType Directory -Path $destDir -Force | Out-Null }
-                    New-Item -ItemType SymbolicLink -Path $destPath -Target $sourcePath -Force | Out-Null
-                    Write-LogOK "Symlinked: $destPath -> $sourceRel"
-                }
-            }
+            throw
         }
+    }
+
+    return [pscustomobject]@{
+        SkippedAccess = $skippedAccess
     }
 }
 
