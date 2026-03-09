@@ -1,25 +1,15 @@
 ### PowerShell Profile based on https://github.com/ChrisTitusTech/powershell-profile
 
 # Opt-out of telemetry before doing anything, only if PowerShell is run as admin
-if ([bool]([System.Security.Principal.WindowsIdentity]::GetCurrent()).IsSystem) {
+if ($null -eq $env:POWERSHELL_TELEMETRY_OPTOUT -and [bool]([System.Security.Principal.WindowsIdentity]::GetCurrent()).IsSystem) {
     [System.Environment]::SetEnvironmentVariable('POWERSHELL_TELEMETRY_OPTOUT', 'true', [System.EnvironmentVariableTarget]::Machine)
 }
 
 # Import Modules and External Profiles
-if (-not (Get-Module -ListAvailable -Name Terminal-Icons)) {
-    Install-Module -Name Terminal-Icons -Scope CurrentUser -Force -SkipPublisherCheck
-}
-Import-Module -Name Terminal-Icons
+Import-Module -Name PSFzf -ErrorAction SilentlyContinue
 
 $ChocolateyProfile = "$env:ChocolateyInstall\helpers\chocolateyProfile.psm1"
-if (Test-Path($ChocolateyProfile)) {
-    Import-Module "$ChocolateyProfile"
-}
-
-$PSFzfModule = "PSFzf"
-if (Get-Module -ListAvailable -Name $PSFzfModule) {
-    Import-Module -Name PSFzf
-}
+Import-Module $ChocolateyProfile -ErrorAction SilentlyContinue
 
 function Update-Profile {
     try {
@@ -100,6 +90,49 @@ function Test-CommandExists {
     return $null -ne (Get-Command $command -ErrorAction SilentlyContinue)
 }
 
+function Test-IsInteractiveTerminal {
+    if (-not $Host.UI -or -not $Host.UI.RawUI) {
+        return $false
+    }
+
+    try {
+        return (-not [Console]::IsInputRedirected) -and (-not [Console]::IsOutputRedirected)
+    }
+    catch {
+        return $false
+    }
+}
+
+function Test-SupportsVirtualTerminal {
+    if (-not (Test-IsInteractiveTerminal)) {
+        return $false
+    }
+
+    try {
+        return [bool]$Host.UI.SupportsVirtualTerminal
+    }
+    catch {
+        return $false
+    }
+}
+
+function Get-OhMyPoshExecutable {
+    $command = Get-Command oh-my-posh -ErrorAction SilentlyContinue | Select-Object -First 1
+    $candidates = @()
+
+    $candidates += @(
+        (Join-Path $env:ProgramFiles 'oh-my-posh\bin\oh-my-posh.exe'),
+        (Join-Path $env:LOCALAPPDATA 'Programs\oh-my-posh\bin\oh-my-posh.exe'),
+        (Join-Path $env:USERPROFILE 'scoop\apps\oh-my-posh\current\bin\oh-my-posh.exe')
+    )
+
+    if ($command -and $command.Source) {
+        $candidates += $command.Source
+    }
+
+    return $candidates | Where-Object { $_ -and (Test-Path $_ -PathType Leaf) } | Select-Object -First 1
+}
+
 # POSIX-like timing wrapper
 function time {
     param($Command, [string[]]$CommandArgs)
@@ -110,10 +143,10 @@ function time {
 }
 
 # Editor Configuration
-$EDITOR = if (Test-CommandExists code) { 'code' }
-elseif (Test-CommandExists nvim) { 'nvim' }
-elseif (Test-CommandExists vim) { 'vim' }
-elseif (Test-CommandExists notepad++) { 'notepad++' }
+$EDITOR = if (Get-Command code -ErrorAction SilentlyContinue) { 'code' }
+elseif (Get-Command nvim -ErrorAction SilentlyContinue) { 'nvim' }
+elseif (Get-Command vim -ErrorAction SilentlyContinue) { 'vim' }
+elseif (Get-Command notepad++ -ErrorAction SilentlyContinue) { 'notepad++' }
 else { 'notepad' }
 Set-Alias -Name vim -Value $EDITOR
 
@@ -284,8 +317,14 @@ function dev { Set-Location 'D:\Code' }
 function k9 { Stop-Process -Name $args[0] }
 
 # Enhanced Listing
-function la { Get-ChildItem -Path . -Force | Format-Table -AutoSize }
-function ll { Get-ChildItem -Path . | Format-Table -AutoSize }
+function la {
+    if (-not (Get-Module -Name Terminal-Icons)) { Import-Module Terminal-Icons -ErrorAction SilentlyContinue }
+    Get-ChildItem -Path . -Force | Format-Table -AutoSize
+}
+function ll {
+    if (-not (Get-Module -Name Terminal-Icons)) { Import-Module Terminal-Icons -ErrorAction SilentlyContinue }
+    Get-ChildItem -Path . | Format-Table -AutoSize
+}
 
 # Git Shortcuts
 function gs { git status }
@@ -326,56 +365,63 @@ function pst { Get-Clipboard }
 
 # Enhanced PowerShell Experience
 # Enhanced PSReadLine Configuration with Gruber Darker Theme
-$PSReadLineOptions = @{
-    EditMode                      = 'Emacs'
-    HistoryNoDuplicates           = $true
-    HistorySearchCursorMovesToEnd = $true
-    Colors                        = @{
-        Command   = '#E4E4E4'
-        Parameter = '#73D936'
-        Operator  = '#95A6C8'
-        Variable  = '#A8A9A7'
-        String    = '#FFDD33'
-        Number    = '#FF5757'
-        Type      = '#E4E4E4'
-        Comment   = '#515151'
-        Keyword   = '#9E94C8'
-        Error     = '#F43841'
+
+if ((Get-Module -ListAvailable PSReadLine) -and (Test-IsInteractiveTerminal)) {
+    Import-Module PSReadLine -ErrorAction SilentlyContinue
+
+    $PSReadLineOptions = @{
+        EditMode                      = 'Emacs'
+        HistoryNoDuplicates           = $true
+        HistorySearchCursorMovesToEnd = $true
+        Colors                        = @{
+            Command   = '#E4E4E4'
+            Parameter = '#73D936'
+            Operator  = '#95A6C8'
+            Variable  = '#A8A9A7'
+            String    = '#FFDD33'
+            Number    = '#FF5757'
+            Type      = '#E4E4E4'
+            Comment   = '#515151'
+            Keyword   = '#9E94C8'
+            Error     = '#F43841'
+        }
+        BellStyle                     = 'None'
+        MaximumHistoryCount           = 10000
     }
-    PredictionSource              = 'History'
-    PredictionViewStyle           = 'ListView'
-    BellStyle                     = 'None'
+
+    if (Test-SupportsVirtualTerminal) {
+        $PSReadLineOptions.PredictionSource = 'HistoryAndPlugin'
+        $PSReadLineOptions.PredictionViewStyle = 'ListView'
+    }
+
+    Set-PSReadLineOption @PSReadLineOptions
+
+    # Custom key handlers
+    Set-PSReadLineKeyHandler -Key   UpArrow           -Function HistorySearchBackward
+    Set-PSReadLineKeyHandler -Key   DownArrow         -Function HistorySearchForward
+    Set-PSReadLineKeyHandler -Key   Tab               -Function MenuComplete
+    Set-PSReadLineKeyHandler -Chord 'Ctrl+d'          -Function DeleteChar
+    Set-PSReadLineKeyHandler -Chord 'Ctrl+w'          -Function BackwardDeleteWord
+    Set-PSReadLineKeyHandler -Chord 'Alt+d'           -Function DeleteWord
+    Set-PSReadLineKeyHandler -Chord 'Ctrl+LeftArrow'  -Function BackwardWord
+    Set-PSReadLineKeyHandler -Chord 'Ctrl+RightArrow' -Function ForwardWord
+    Set-PSReadLineKeyHandler -Chord 'Ctrl+z'          -Function Undo
+    Set-PSReadLineKeyHandler -Chord 'Ctrl+y'          -Function Redo
+
+    # Custom functions for PSReadLine
+    Set-PSReadLineOption -AddToHistoryHandler {
+        param($line)
+        $sensitive = @('password', 'secret', 'token', 'apikey', 'connectionstring')
+        $hasSensitive = $sensitive | Where-Object { $line -match $_ }
+        return ($null -eq $hasSensitive)
+    }
+
+    # Custom key bindings for PSFzf
+    if (Get-Module -Name PSFzf -ListAvailable) {
+        Import-Module PSFzf -ErrorAction SilentlyContinue
+        Set-PsFzfOption -PSReadlineChordProvider 'Ctrl+t' -PSReadlineChordReverseHistory 'Ctrl+r' -PSReadlineChordSetLocation 'Alt+c'
+    }
 }
-Set-PSReadLineOption @PSReadLineOptions
-
-# Custom key handlers
-Set-PSReadLineKeyHandler -Key   UpArrow           -Function HistorySearchBackward
-Set-PSReadLineKeyHandler -Key   DownArrow         -Function HistorySearchForward
-Set-PSReadLineKeyHandler -Key   Tab               -Function MenuComplete
-Set-PSReadLineKeyHandler -Chord 'Ctrl+d'          -Function DeleteChar
-Set-PSReadLineKeyHandler -Chord 'Ctrl+w'          -Function BackwardDeleteWord
-Set-PSReadLineKeyHandler -Chord 'Alt+d'           -Function DeleteWord
-Set-PSReadLineKeyHandler -Chord 'Ctrl+LeftArrow'  -Function BackwardWord
-Set-PSReadLineKeyHandler -Chord 'Ctrl+RightArrow' -Function ForwardWord
-Set-PSReadLineKeyHandler -Chord 'Ctrl+z'          -Function Undo
-Set-PSReadLineKeyHandler -Chord 'Ctrl+y'          -Function Redo
-
-# Custom functions for PSReadLine
-Set-PSReadLineOption -AddToHistoryHandler {
-    param($line)
-    $sensitive = @('password', 'secret', 'token', 'apikey', 'connectionstring')
-    $hasSensitive = $sensitive | Where-Object { $line -match $_ }
-    return ($null -eq $hasSensitive)
-}
-
-# Custom key bindings for PSFzf
-if (Get-Module -Name PSFzf) {
-    Set-PsFzfOption -PSReadlineChordProvider 'Ctrl+t' -PSReadlineChordReverseHistory 'Ctrl+r' -PSReadlineChordSetLocation 'Alt+c'
-}
-
-# Improved prediction settings
-Set-PSReadLineOption -PredictionSource HistoryAndPlugin
-Set-PSReadLineOption -MaximumHistoryCount 10000
 
 # Custom completion for common commands
 $scriptblock = {
@@ -387,9 +433,11 @@ $scriptblock = {
     }
     $command = $commandAst.CommandElements[0].Value
     if ($customCompletions.ContainsKey($command)) {
-        $customCompletions[$command] | Where-Object { $_ -like "$wordToComplete*" } | ForEach-Object {
-            [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
-        }
+        $customCompletions[$command] |
+            Where-Object { $_ -like "$wordToComplete*" } |
+            ForEach-Object {
+                [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
+            }
     }
 }
 Register-ArgumentCompleter -Native -CommandName git, npm, deno -ScriptBlock $scriptblock
@@ -397,20 +445,29 @@ Register-ArgumentCompleter -Native -CommandName git, npm, deno -ScriptBlock $scr
 $scriptblock = {
     param($wordToComplete, $commandAst, $cursorPosition)
     dotnet complete --position $cursorPosition $commandAst.ToString() |
-    ForEach-Object {
-        [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
-    }
+        ForEach-Object {
+            [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
+        }
 }
 Register-ArgumentCompleter -Native -CommandName dotnet -ScriptBlock $scriptblock
 
 # Set Theme
-$profileDir_omp = Split-Path -Parent $PROFILE
-$themePath = "$profileDir_omp\oh-my-posh_cobalt2.omp.json"
-if (Test-Path $themePath) {
-    oh-my-posh init pwsh --config $themePath | Invoke-Expression
-}
-else {
-    oh-my-posh init pwsh --config https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/main/themes/cobalt2.omp.json | Invoke-Expression
+$ohMyPoshPath = Get-OhMyPoshExecutable
+if ($ohMyPoshPath) {
+    $themePath = Join-Path (Split-Path -Parent $PROFILE) "oh-my-posh_cobalt2.omp.json"
+    $themeConfig = if (Test-Path $themePath -PathType Leaf) {
+        $themePath
+    }
+    else {
+        'https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/main/themes/cobalt2.omp.json'
+    }
+
+    try {
+        & $ohMyPoshPath init pwsh --config $themeConfig | Invoke-Expression
+    }
+    catch {
+        Write-Verbose "Skipping oh-my-posh initialization: $_"
+    }
 }
 
 # fnm (Node.js version manager)
@@ -420,7 +477,11 @@ if (Get-Command fnm -ErrorAction SilentlyContinue) {
 
 # Set up zoxide
 if (Get-Command zoxide -ErrorAction SilentlyContinue) {
-    Invoke-Expression (& { (zoxide init --cmd cd powershell | Out-String) })
+    $zoxideCache = Join-Path $env:TEMP "zoxide_cache.ps1"
+    if (-not (Test-Path $zoxideCache)) {
+        zoxide init --cmd cd powershell | Out-String | Out-File $zoxideCache -Encoding utf8
+    }
+    . $zoxideCache
 }
 
 function z_and_list {
