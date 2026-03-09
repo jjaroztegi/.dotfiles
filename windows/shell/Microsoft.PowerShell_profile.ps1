@@ -117,20 +117,64 @@ function Test-SupportsVirtualTerminal {
 }
 
 function Get-OhMyPoshExecutable {
-    $command = Get-Command oh-my-posh -ErrorAction SilentlyContinue | Select-Object -First 1
-    $candidates = @()
+    $stablePath = Join-Path $env:LOCALAPPDATA 'Programs\oh-my-posh\bin\oh-my-posh.exe'
+    if (Test-Path $stablePath -PathType Leaf) {
+        return $stablePath
+    }
 
-    $candidates += @(
+    $candidates = @(
         (Join-Path $env:ProgramFiles 'oh-my-posh\bin\oh-my-posh.exe'),
-        (Join-Path $env:LOCALAPPDATA 'Programs\oh-my-posh\bin\oh-my-posh.exe'),
         (Join-Path $env:USERPROFILE 'scoop\apps\oh-my-posh\current\bin\oh-my-posh.exe')
     )
 
-    if ($command -and $command.Source) {
+    $command = Get-Command oh-my-posh -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($command -and $command.Source -and $command.Source -notlike '*\Microsoft\WindowsApps\*') {
         $candidates += $command.Source
     }
 
     return $candidates | Where-Object { $_ -and (Test-Path $_ -PathType Leaf) } | Select-Object -First 1
+}
+
+function Sync-OhMyPoshExecutable {
+    $appxRegistryKey = Get-ChildItem 'HKCU:\Software\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\Repository\Packages' -ErrorAction SilentlyContinue |
+        Where-Object PSChildName -like 'ohmyposh.cli_*' |
+        Select-Object -First 1
+
+    if (-not $appxRegistryKey) {
+        return $null
+    }
+
+    $packageRoot = (Get-ItemProperty $appxRegistryKey.PSPath -ErrorAction SilentlyContinue).PackageRootFolder
+    if (-not $packageRoot) {
+        return $null
+    }
+
+    $sourcePath = Join-Path $packageRoot 'oh-my-posh.exe'
+    if (-not (Test-Path $sourcePath -PathType Leaf)) {
+        return $null
+    }
+
+    $targetPath = Join-Path $env:LOCALAPPDATA 'Programs\oh-my-posh\bin\oh-my-posh.exe'
+    $targetDir = Split-Path -Parent $targetPath
+    if (-not (Test-Path $targetDir -PathType Container)) {
+        New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+    }
+
+    $shouldCopy = -not (Test-Path $targetPath -PathType Leaf)
+    if (-not $shouldCopy) {
+        $sourceHash = (Get-FileHash $sourcePath -ErrorAction SilentlyContinue).Hash
+        $targetHash = (Get-FileHash $targetPath -ErrorAction SilentlyContinue).Hash
+        $shouldCopy = $sourceHash -and $targetHash -and ($sourceHash -ne $targetHash)
+    }
+
+    if ($shouldCopy) {
+        $copyResult = & robocopy $packageRoot $targetDir 'oh-my-posh.exe' /R:1 /W:1 /NFL /NDL /NJH /NJS /NC /NS
+        if ($LASTEXITCODE -ge 8 -or -not (Test-Path $targetPath -PathType Leaf)) {
+            return $null
+        }
+    }
+
+    return $targetPath
 }
 
 # POSIX-like timing wrapper
@@ -452,6 +496,7 @@ $scriptblock = {
 Register-ArgumentCompleter -Native -CommandName dotnet -ScriptBlock $scriptblock
 
 # Set Theme
+$null = Sync-OhMyPoshExecutable
 $ohMyPoshPath = Get-OhMyPoshExecutable
 if ($ohMyPoshPath) {
     $themePath = Join-Path (Split-Path -Parent $PROFILE) "oh-my-posh_cobalt2.omp.json"
@@ -464,6 +509,7 @@ if ($ohMyPoshPath) {
 
     try {
         & $ohMyPoshPath init pwsh --config $themeConfig | Invoke-Expression
+        $global:_ompExecutable = $ohMyPoshPath
     }
     catch {
         Write-Verbose "Skipping oh-my-posh initialization: $_"
