@@ -76,9 +76,6 @@ function prompt {
     if ($isAdmin) { "[" + (Get-Location) + "] # " } else { "[" + (Get-Location) + "] $ " }
 }
 $adminSuffix = if ($isAdmin) { " [ADMIN]" } else { "" }
-if ($script:IsInteractiveProfile) {
-    $Host.UI.RawUI.WindowTitle = "PowerShell {0}$adminSuffix" -f $PSVersionTable.PSVersion.ToString()
-}
 
 # Utility Functions
 function Test-CommandExists {
@@ -131,9 +128,34 @@ function Get-ProfileMode {
 $script:ProfileMode = Get-ProfileMode
 $script:IsInteractiveProfile = ($script:ProfileMode -eq 'interactive') -and (Test-IsInteractiveTerminal)
 
-$ChocolateyProfile = "$env:ChocolateyInstall\helpers\chocolateyProfile.psm1"
 if ($script:IsInteractiveProfile) {
+    $Host.UI.RawUI.WindowTitle = "PowerShell {0}$adminSuffix" -f $PSVersionTable.PSVersion.ToString()
+}
+
+$ChocolateyProfile = "$env:ChocolateyInstall\helpers\chocolateyProfile.psm1"
+$script:ChocolateyProfileLoaded = $false
+
+function Import-ChocolateyProfileOnDemand {
+    if ($script:ChocolateyProfileLoaded) {
+        return $true
+    }
+
+    if (-not (Test-Path $ChocolateyProfile -PathType Leaf)) {
+        return $false
+    }
+
     Import-Module $ChocolateyProfile -ErrorAction SilentlyContinue
+    $script:ChocolateyProfileLoaded = $null -ne (Get-Command Update-SessionEnvironment -ErrorAction SilentlyContinue)
+    return $script:ChocolateyProfileLoaded
+}
+
+function refreshenv {
+    if (-not (Import-ChocolateyProfileOnDemand)) {
+        Write-Error "Chocolatey profile is unavailable."
+        return
+    }
+
+    Update-SessionEnvironment @args
 }
 
 function Get-OhMyPoshExecutable {
@@ -155,7 +177,31 @@ function Get-OhMyPoshExecutable {
     return $candidates | Where-Object { $_ -and (Test-Path $_ -PathType Leaf) } | Select-Object -First 1
 }
 
+function Get-FnmExecutable {
+    $wingetPath = Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Links\fnm.exe'
+    if (Test-Path $wingetPath -PathType Leaf) {
+        return $wingetPath
+    }
+
+    return $null
+}
+
 function Sync-OhMyPoshExecutable {
+    param(
+        [int]$RefreshHours = 12
+    )
+
+    $targetPath = Join-Path $env:LOCALAPPDATA 'Programs\oh-my-posh\bin\oh-my-posh.exe'
+    $targetDir = Split-Path -Parent $targetPath
+    $packageStampPath = Join-Path $targetDir 'oh-my-posh.package.txt'
+
+    if ((Test-Path $targetPath -PathType Leaf) -and (Test-Path $packageStampPath -PathType Leaf)) {
+        $lastCheck = (Get-Item $packageStampPath -ErrorAction SilentlyContinue).LastWriteTime
+        if ($lastCheck -and $lastCheck -gt (Get-Date).AddHours(-$RefreshHours)) {
+            return $targetPath
+        }
+    }
+
     $appxRegistryKey = Get-ChildItem 'HKCU:\Software\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\Repository\Packages' -ErrorAction SilentlyContinue |
         Where-Object PSChildName -like 'ohmyposh.cli_*' |
         Select-Object -First 1
@@ -174,17 +220,18 @@ function Sync-OhMyPoshExecutable {
         return $null
     }
 
-    $targetPath = Join-Path $env:LOCALAPPDATA 'Programs\oh-my-posh\bin\oh-my-posh.exe'
-    $targetDir = Split-Path -Parent $targetPath
     if (-not (Test-Path $targetDir -PathType Container)) {
         New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
     }
 
-    $shouldCopy = -not (Test-Path $targetPath -PathType Leaf)
+    $packageStamp = $appxRegistryKey.PSChildName
+    $currentStamp = if (Test-Path $packageStampPath -PathType Leaf) {
+        Get-Content $packageStampPath -Raw -ErrorAction SilentlyContinue
+    }
+
+    $shouldCopy = (-not (Test-Path $targetPath -PathType Leaf)) -or ($currentStamp -ne $packageStamp)
     if (-not $shouldCopy) {
-        $sourceHash = (Get-FileHash $sourcePath -ErrorAction SilentlyContinue).Hash
-        $targetHash = (Get-FileHash $targetPath -ErrorAction SilentlyContinue).Hash
-        $shouldCopy = $sourceHash -and $targetHash -and ($sourceHash -ne $targetHash)
+        return $targetPath
     }
 
     if ($shouldCopy) {
@@ -192,6 +239,8 @@ function Sync-OhMyPoshExecutable {
         if ($LASTEXITCODE -ge 8 -or -not (Test-Path $targetPath -PathType Leaf)) {
             return $null
         }
+
+        Set-Content -Path $packageStampPath -Value $packageStamp -Encoding ASCII
     }
 
     return $targetPath
@@ -207,16 +256,29 @@ function time {
 }
 
 # Editor Configuration
-$EDITOR = if (Get-Command code -ErrorAction SilentlyContinue) { 'code' }
-elseif (Get-Command nvim -ErrorAction SilentlyContinue) { 'nvim' }
-elseif (Get-Command vim -ErrorAction SilentlyContinue) { 'vim' }
-elseif (Get-Command notepad++ -ErrorAction SilentlyContinue) { 'notepad++' }
-else { 'notepad' }
-Set-Alias -Name vim -Value $EDITOR
+$script:PreferredEditor = $null
+
+function Get-PreferredEditor {
+    if ($script:PreferredEditor) {
+        return $script:PreferredEditor
+    }
+
+    $script:PreferredEditor = if (Get-Command code -CommandType Application -ErrorAction SilentlyContinue) { 'code' }
+    elseif (Get-Command nvim -CommandType Application -ErrorAction SilentlyContinue) { 'nvim' }
+    elseif (Get-Command vim -CommandType Application -ErrorAction SilentlyContinue) { 'vim' }
+    elseif (Get-Command notepad++ -CommandType Application -ErrorAction SilentlyContinue) { 'notepad++' }
+    else { 'notepad' }
+
+    return $script:PreferredEditor
+}
+
+function vim {
+    & (Get-PreferredEditor) @args
+}
 
 # Quick Access to Editing the Profile
 function Edit-Profile {
-    vim $PROFILE.CurrentUserAllHosts
+    & (Get-PreferredEditor) $PROFILE.CurrentUserAllHosts
 }
 Set-Alias -Name ep -Value Edit-Profile
 
@@ -437,9 +499,11 @@ function pst { Get-Clipboard }
 # Enhanced PowerShell Experience
 # Enhanced PSReadLine Configuration with Gruber Darker Theme
 
-if ($script:IsInteractiveProfile -and (Get-Module -ListAvailable PSReadLine)) {
+if ($script:IsInteractiveProfile) {
     Import-Module PSReadLine -ErrorAction SilentlyContinue
+}
 
+if ($script:IsInteractiveProfile -and (Get-Module -Name PSReadLine)) {
     $PSReadLineOptions = @{
         EditMode                      = 'Emacs'
         HistoryNoDuplicates           = $true
@@ -545,8 +609,9 @@ if ($script:IsInteractiveProfile) {
     }
 
     # fnm (Node.js version manager)
-    if (Get-Command fnm -ErrorAction SilentlyContinue) {
-        fnm env --use-on-cd | Out-String | Invoke-Expression
+    $fnmPath = Get-FnmExecutable
+    if ($fnmPath) {
+        & $fnmPath env --use-on-cd | Out-String | Invoke-Expression
     }
 
     # Set up zoxide
