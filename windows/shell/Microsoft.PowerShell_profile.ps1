@@ -5,12 +5,6 @@ if ($null -eq $env:POWERSHELL_TELEMETRY_OPTOUT -and [bool]([System.Security.Prin
     [System.Environment]::SetEnvironmentVariable('POWERSHELL_TELEMETRY_OPTOUT', 'true', [System.EnvironmentVariableTarget]::Machine)
 }
 
-# Import Modules and External Profiles
-Import-Module -Name PSFzf -ErrorAction SilentlyContinue
-
-$ChocolateyProfile = "$env:ChocolateyInstall\helpers\chocolateyProfile.psm1"
-Import-Module $ChocolateyProfile -ErrorAction SilentlyContinue
-
 function Update-Profile {
     try {
         $url = "https://raw.githubusercontent.com/jjaroztegi/.dotfiles/main/windows/shell/Microsoft.PowerShell_profile.ps1"
@@ -82,7 +76,9 @@ function prompt {
     if ($isAdmin) { "[" + (Get-Location) + "] # " } else { "[" + (Get-Location) + "] $ " }
 }
 $adminSuffix = if ($isAdmin) { " [ADMIN]" } else { "" }
-$Host.UI.RawUI.WindowTitle = "PowerShell {0}$adminSuffix" -f $PSVersionTable.PSVersion.ToString()
+if ($script:IsInteractiveProfile) {
+    $Host.UI.RawUI.WindowTitle = "PowerShell {0}$adminSuffix" -f $PSVersionTable.PSVersion.ToString()
+}
 
 # Utility Functions
 function Test-CommandExists {
@@ -114,6 +110,30 @@ function Test-SupportsVirtualTerminal {
     catch {
         return $false
     }
+}
+
+function Get-ProfileMode {
+    if ($env:POWERSHELL_PROFILE_MODE -eq 'full') {
+        return 'interactive'
+    }
+
+    if ($env:POWERSHELL_PROFILE_MODE -eq 'lean') {
+        return 'lean'
+    }
+
+    if (Test-IsInteractiveTerminal) {
+        return 'interactive'
+    }
+
+    return 'lean'
+}
+
+$script:ProfileMode = Get-ProfileMode
+$script:IsInteractiveProfile = ($script:ProfileMode -eq 'interactive') -and (Test-IsInteractiveTerminal)
+
+$ChocolateyProfile = "$env:ChocolateyInstall\helpers\chocolateyProfile.psm1"
+if ($script:IsInteractiveProfile) {
+    Import-Module $ChocolateyProfile -ErrorAction SilentlyContinue
 }
 
 function Get-OhMyPoshExecutable {
@@ -168,7 +188,7 @@ function Sync-OhMyPoshExecutable {
     }
 
     if ($shouldCopy) {
-        $copyResult = & robocopy $packageRoot $targetDir 'oh-my-posh.exe' /R:1 /W:1 /NFL /NDL /NJH /NJS /NC /NS
+        & robocopy $packageRoot $targetDir 'oh-my-posh.exe' /R:1 /W:1 /NFL /NDL /NJH /NJS /NC /NS | Out-Null
         if ($LASTEXITCODE -ge 8 -or -not (Test-Path $targetPath -PathType Leaf)) {
             return $null
         }
@@ -376,7 +396,14 @@ function ga { git add . }
 function gc { param($m) git commit -m "$m" }
 function gpush { git push }
 function gpull { git pull }
-function g { __zoxide_z github }
+function g {
+    if (Get-Command __zoxide_z -ErrorAction SilentlyContinue) {
+        __zoxide_z github
+        return
+    }
+
+    Write-Error "zoxide is not initialized in lean profile mode."
+}
 function gcl { git clone "$args" }
 function gcom {
     git add .
@@ -410,7 +437,7 @@ function pst { Get-Clipboard }
 # Enhanced PowerShell Experience
 # Enhanced PSReadLine Configuration with Gruber Darker Theme
 
-if ((Get-Module -ListAvailable PSReadLine) -and (Test-IsInteractiveTerminal)) {
+if ($script:IsInteractiveProfile -and (Get-Module -ListAvailable PSReadLine)) {
     Import-Module PSReadLine -ErrorAction SilentlyContinue
 
     $PSReadLineOptions = @{
@@ -467,75 +494,77 @@ if ((Get-Module -ListAvailable PSReadLine) -and (Test-IsInteractiveTerminal)) {
     }
 }
 
-# Custom completion for common commands
-$scriptblock = {
-    param($wordToComplete, $commandAst, $cursorPosition)
-    $customCompletions = @{
-        'git'  = @('status', 'add', 'commit', 'push', 'pull', 'clone', 'checkout', 'switch', 'merge', 'rebase', 'tag', 'log', 'reflog', 'reset', 'revert', 'stash', 'fetch', 'remote', 'config', 'init', 'help')
-        'npm'  = @('install', 'start', 'run', 'test', 'build')
-        'deno' = @('run', 'compile', 'bundle', 'test', 'lint', 'fmt', 'cache', 'info', 'doc', 'upgrade')
+if ($script:IsInteractiveProfile) {
+    # Custom completion for common commands
+    $scriptblock = {
+        param($wordToComplete, $commandAst, $cursorPosition)
+        $customCompletions = @{
+            'git'  = @('status', 'add', 'commit', 'push', 'pull', 'clone', 'checkout', 'switch', 'merge', 'rebase', 'tag', 'log', 'reflog', 'reset', 'revert', 'stash', 'fetch', 'remote', 'config', 'init', 'help')
+            'npm'  = @('install', 'start', 'run', 'test', 'build')
+            'deno' = @('run', 'compile', 'bundle', 'test', 'lint', 'fmt', 'cache', 'info', 'doc', 'upgrade')
+        }
+        $command = $commandAst.CommandElements[0].Value
+        if ($customCompletions.ContainsKey($command)) {
+            $customCompletions[$command] |
+                Where-Object { $_ -like "$wordToComplete*" } |
+                ForEach-Object {
+                    [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
+                }
+        }
     }
-    $command = $commandAst.CommandElements[0].Value
-    if ($customCompletions.ContainsKey($command)) {
-        $customCompletions[$command] |
-            Where-Object { $_ -like "$wordToComplete*" } |
+    Register-ArgumentCompleter -Native -CommandName git, npm, deno -ScriptBlock $scriptblock
+
+    $scriptblock = {
+        param($wordToComplete, $commandAst, $cursorPosition)
+        dotnet complete --position $cursorPosition $commandAst.ToString() |
             ForEach-Object {
                 [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
             }
     }
-}
-Register-ArgumentCompleter -Native -CommandName git, npm, deno -ScriptBlock $scriptblock
+    Register-ArgumentCompleter -Native -CommandName dotnet -ScriptBlock $scriptblock
 
-$scriptblock = {
-    param($wordToComplete, $commandAst, $cursorPosition)
-    dotnet complete --position $cursorPosition $commandAst.ToString() |
-        ForEach-Object {
-            [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
+    # Set Theme
+    $null = Sync-OhMyPoshExecutable
+    $ohMyPoshPath = Get-OhMyPoshExecutable
+    if ($ohMyPoshPath) {
+        $themePath = Join-Path (Split-Path -Parent $PROFILE) "oh-my-posh_cobalt2.omp.json"
+        $themeConfig = if (Test-Path $themePath -PathType Leaf) {
+            $themePath
         }
-}
-Register-ArgumentCompleter -Native -CommandName dotnet -ScriptBlock $scriptblock
+        else {
+            'https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/main/themes/cobalt2.omp.json'
+        }
 
-# Set Theme
-$null = Sync-OhMyPoshExecutable
-$ohMyPoshPath = Get-OhMyPoshExecutable
-if ($ohMyPoshPath) {
-    $themePath = Join-Path (Split-Path -Parent $PROFILE) "oh-my-posh_cobalt2.omp.json"
-    $themeConfig = if (Test-Path $themePath -PathType Leaf) {
-        $themePath
-    }
-    else {
-        'https://raw.githubusercontent.com/JanDeDobbeleer/oh-my-posh/main/themes/cobalt2.omp.json'
+        try {
+            & $ohMyPoshPath init pwsh --config $themeConfig | Invoke-Expression
+            $global:_ompExecutable = $ohMyPoshPath
+        }
+        catch {
+            Write-Verbose "Skipping oh-my-posh initialization: $_"
+        }
     }
 
-    try {
-        & $ohMyPoshPath init pwsh --config $themeConfig | Invoke-Expression
-        $global:_ompExecutable = $ohMyPoshPath
+    # fnm (Node.js version manager)
+    if (Get-Command fnm -ErrorAction SilentlyContinue) {
+        fnm env --use-on-cd | Out-String | Invoke-Expression
     }
-    catch {
-        Write-Verbose "Skipping oh-my-posh initialization: $_"
+
+    # Set up zoxide
+    if (Get-Command zoxide -ErrorAction SilentlyContinue) {
+        $zoxideCache = Join-Path $env:TEMP "zoxide_cache.ps1"
+        if (-not (Test-Path $zoxideCache)) {
+            zoxide init --cmd cd powershell | Out-String | Out-File $zoxideCache -Encoding utf8
+        }
+        . $zoxideCache
+
+        function z_and_list {
+            __zoxide_z @args
+            ll
+        }
+        Set-Alias -Name z -Value z_and_list -Option AllScope -Scope Global -Force
+        Set-Alias -Name zi -Value __zoxide_zi -Option AllScope -Scope Global -Force
     }
 }
-
-# fnm (Node.js version manager)
-if (Get-Command fnm -ErrorAction SilentlyContinue) {
-    fnm env --use-on-cd | Out-String | Invoke-Expression
-}
-
-# Set up zoxide
-if (Get-Command zoxide -ErrorAction SilentlyContinue) {
-    $zoxideCache = Join-Path $env:TEMP "zoxide_cache.ps1"
-    if (-not (Test-Path $zoxideCache)) {
-        zoxide init --cmd cd powershell | Out-String | Out-File $zoxideCache -Encoding utf8
-    }
-    . $zoxideCache
-}
-
-function z_and_list {
-    __zoxide_z @args
-    ll
-}
-Set-Alias -Name z -Value z_and_list -Option AllScope -Scope Global -Force
-Set-Alias -Name zi -Value __zoxide_zi -Option AllScope -Scope Global -Force
 
 # Help Function
 function Show-Help {
