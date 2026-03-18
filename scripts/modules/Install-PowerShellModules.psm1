@@ -1,3 +1,5 @@
+Import-Module (Join-Path (Split-Path -Parent $PSScriptRoot) "lib\Common.psm1") -Force
+
 function Install-PSModule {
     param([string]$ModuleName)
 

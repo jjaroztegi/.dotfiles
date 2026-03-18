@@ -10,14 +10,30 @@ This repository contains configuration files and installation scripts to quickly
 
 ```
 .
+├── config/                  # Windows package, placement, and runtime policy
 ├── common/                  # Shared configurations (git, ignore)
 ├── manifests/               # Manifest files
 │   ├── unix.manifest        # Configuration manifest for Unix systems
 │   └── windows.manifest     # Configuration manifest for Windows systems
 ├── scripts/                 # Deployment and setup scripts
-│   ├── bootstrap.ps1        # Full Windows setup (Apps + Dotfiles)
+│   ├── bootstrap.ps1        # Windows entrypoint for full machine setup
 │   ├── deploy.ps1           # Windows dotfiles linker
+│   ├── ensure-runtime-tooling.ps1 # Runtime maintenance entrypoint
 │   └── deploy.sh            # Unix deployment script
+│
+├── scripts/lib/             # Shared PowerShell helper modules
+│   ├── Common.psm1          # Generic logging, probing, and transcript helpers
+│   ├── SetupEnvironment.psm1 # Placement, package catalog, runtime policy, and PATH helpers
+│   └── ManifestHelpers.psm1 # Manifest/deployment helper functions
+├── scripts/modules/         # Windows setup feature modules
+│   ├── BootstrapWorkflow.psm1 # User/admin setup orchestration
+│   ├── ManagedPackages.psm1   # Catalog-driven package install/state/shim logic
+│   ├── RuntimeTooling.psm1    # Profile-independent Node/Python runtime setup
+│   ├── Install-PackageManagers.psm1
+│   ├── Install-DevTools.psm1
+│   ├── Install-Fonts.psm1
+│   ├── Install-PowerShellModules.psm1
+│   └── Configure-WindowsTerminal.psm1
 ├── unix/                    # Unix-specific configuration
 └── windows/                 # Windows-specific configuration
 ```
@@ -47,6 +63,12 @@ irm "https://tinyurl.com/mum8xazv" | iex
 
    ```powershell
    powershell.exe -ExecutionPolicy Bypass -File .\scripts\bootstrap.ps1
+   ```
+
+   To prefer a specific install drive for placement-aware packages:
+
+   ```powershell
+   powershell.exe -ExecutionPolicy Bypass -File .\scripts\bootstrap.ps1 -PreferredDrive D:
    ```
 
    For just dotfiles linking (supports `-WhatIf` for dry-run):
@@ -110,8 +132,15 @@ windows/shell/Microsoft.PowerShell_profile.ps1|symlink|$ProfileDir\Microsoft.Pow
 
 1. Fork this repository
 2. Modify the manifests in `manifests/` to include your own configuration files
-3. Update the deployment scripts if needed
-4. Run the deployment scripts on your machines
+3. Adjust Windows behavior in `config/placement.json`, `config/package-catalog.json`, and `config/runtime-policy.json`
+4. Update the deployment scripts if needed
+5. Run the deployment scripts on your machines
+
+Rebuild profile-independent Node/Python runtime entry points from policy:
+
+```powershell
+.\scripts\ensure-runtime-tooling.ps1 -Execute
+```
 
 ## License
 

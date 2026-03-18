@@ -1,3 +1,6 @@
+Import-Module (Join-Path (Split-Path -Parent $PSScriptRoot) "lib\Common.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "ManagedPackages.psm1") -Force
+
 function Install-NerdFonts {
     param (
         [string]$FontName = "Iosevka Nerd Font"

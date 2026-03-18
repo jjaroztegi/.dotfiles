@@ -50,7 +50,6 @@ function Test-SymlinkCapability {
     $testLink = Join-Path $env:TEMP "symlink_test_$([guid]::NewGuid())"
     $testTarget = $env:TEMP
     try {
-        # Requires Administrator privileges or Developer Mode.
         New-Item -ItemType SymbolicLink -Path $testLink -Target $testTarget -ErrorAction Stop | Out-Null
         Remove-Item $testLink -Force
         return $true
@@ -81,7 +80,6 @@ function Get-CommandProbeArgs {
     param([string]$Name)
 
     $defaultArgs = @("--version")
-
     if ([string]::IsNullOrWhiteSpace($Name)) {
         return $defaultArgs
     }
@@ -89,6 +87,11 @@ function Get-CommandProbeArgs {
     $overrides = @{
         "winfetch" = @("--help")
         "wt"       = @("--version")
+        "go"       = @("version")
+        "ffmpeg"   = @("-version")
+        "pyenv"    = @("--version")
+        "7z"       = @("i")
+        "gswin64c" = @("-version")
     }
 
     if ($overrides.ContainsKey($Name)) {
@@ -110,80 +113,74 @@ function Test-CommandAccessible {
         return $false
     }
 
-    $args = Get-CommandProbeArgs -Name $Name
+    $resolutionOnlyCommands = @('wt', 'QuickLook')
+    if ($resolutionOnlyCommands -contains $Name) {
+        return $true
+    }
+
+    $probeArgs = Get-CommandProbeArgs -Name $Name
     try {
+        $stdoutLog = "$env:TEMP\\codex-$Name-out.log"
+        $stderrLog = "$env:TEMP\\codex-$Name-err.log"
         $filePath = if ($cmd.Path) { $cmd.Path } else { $Name }
-        $proc = Start-Process -FilePath $filePath -ArgumentList $args -NoNewWindow -Wait -PassThru -ErrorAction Stop
+        $startInfo = @{
+            NoNewWindow = $true
+            Wait = $true
+            PassThru = $true
+            RedirectStandardOutput = $stdoutLog
+            RedirectStandardError = $stderrLog
+            ErrorAction = 'Stop'
+        }
+
+        if ($cmd.CommandType -eq [System.Management.Automation.CommandTypes]::ExternalScript -or $filePath -like '*.ps1') {
+            $hostCommand = if (Get-Command pwsh -ErrorAction SilentlyContinue) { 'pwsh' } else { 'powershell' }
+            $scriptArgs = [System.Collections.Generic.List[string]]::new()
+            [void]$scriptArgs.Add('-NoLogo')
+            [void]$scriptArgs.Add('-NoProfile')
+            [void]$scriptArgs.Add('-File')
+            [void]$scriptArgs.Add($filePath)
+            foreach ($arg in $probeArgs) {
+                [void]$scriptArgs.Add($arg)
+            }
+
+            $startInfo.FilePath = $hostCommand
+            $startInfo.ArgumentList = @($scriptArgs)
+        }
+        else {
+            $startInfo.FilePath = $filePath
+            $startInfo.ArgumentList = @($probeArgs)
+        }
+
+        $proc = Start-Process @startInfo
         return ($proc.ExitCode -eq 0)
     }
     catch {
         return $false
     }
+    finally {
+        Remove-Item "$env:TEMP\\codex-$Name-out.log" -ErrorAction SilentlyContinue
+        Remove-Item "$env:TEMP\\codex-$Name-err.log" -ErrorAction SilentlyContinue
+    }
 }
 
-function Ensure-PathEntry {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Entry,
-        [ValidateSet('User', 'Machine')]
-        [string]$Scope = 'User'
-    )
-
-    if ([string]::IsNullOrWhiteSpace($Entry)) {
-        return $false
-    }
-
-    $current = [System.Environment]::GetEnvironmentVariable("Path", $Scope)
-    $parts = @()
-    if (-not [string]::IsNullOrWhiteSpace($current)) {
-        $parts = $current.Split(';') | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
-    }
-
-    if ($parts -contains $Entry) {
-        return $false
-    }
-
-    $newPath = if ($parts.Count -gt 0) { ($parts + $Entry) -join ';' } else { $Entry }
-    [System.Environment]::SetEnvironmentVariable("Path", $newPath, $Scope)
-    return $true
+function Get-DotfilesRoot {
+    return (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
 }
 
-function Ensure-StandardPaths {
-    param(
-        [bool]$IsAdmin = $false
-    )
+function Get-DotfilesConfigPath {
+    param([Parameter(Mandatory = $true)][string]$Name)
 
-    $updated = $false
+    return (Join-Path (Join-Path (Get-DotfilesRoot) "config") $Name)
+}
 
-    # Always ensure WindowsApps for current user.
-    $windowsApps = Join-Path $env:LOCALAPPDATA "Microsoft\WindowsApps"
-    if (Ensure-PathEntry -Entry $windowsApps -Scope User) {
-        $updated = $true
+function Read-JsonFile {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    if (-not (Test-Path $Path -PathType Leaf)) {
+        throw "JSON file not found: $Path"
     }
 
-    # Ensure Scoop shims if Scoop is present.
-    $scoopShims = Join-Path $env:USERPROFILE "scoop\shims"
-    if (Test-Path $scoopShims) {
-        if (Ensure-PathEntry -Entry $scoopShims -Scope User) {
-            $updated = $true
-        }
-    }
-
-    # Ensure Chocolatey bin for machine scope if running admin and choco is installed.
-    if ($IsAdmin -and (Get-Command choco -ErrorAction SilentlyContinue)) {
-        $chocoBin = Join-Path $env:ProgramData "chocolatey\bin"
-        if (Test-Path $chocoBin) {
-            if (Ensure-PathEntry -Entry $chocoBin -Scope Machine) {
-                $updated = $true
-            }
-        }
-    }
-
-    if ($updated) {
-        Update-Path
-    }
-
-    return $updated
+    return (Get-Content $Path -Raw | ConvertFrom-Json)
 }
 
 function Start-SetupTranscript {
@@ -204,7 +201,6 @@ function Start-SetupTranscript {
         $global:TranscriptRunning = $true
     }
     catch {
-        # Ignore transcript start failures (e.g., already running or no permission)
     }
 }
 
@@ -216,11 +212,10 @@ function Stop-SetupTranscript {
         }
     }
     catch {
-        # Ignore stop failures (e.g., no transcript running)
     }
 }
 
 Export-ModuleMember -Function Test-InternetConnection, Test-IsAdmin, Test-SymlinkCapability, Update-Path, `
-    Test-CommandAvailable, Get-CommandProbeArgs, Test-CommandAccessible, Ensure-PathEntry, Ensure-StandardPaths, `
+    Test-CommandAvailable, Get-CommandProbeArgs, Test-CommandAccessible, Get-DotfilesRoot, Get-DotfilesConfigPath, Read-JsonFile, `
     Start-SetupTranscript, Stop-SetupTranscript, `
     Write-Log, Write-LogOK, Write-LogInfo, Write-LogWarn, Write-LogError, Write-LogSkip, Write-LogBackup, Write-LogDryRun

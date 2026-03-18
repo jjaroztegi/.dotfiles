@@ -1,0 +1,6 @@
+{
+  "preferredDrive": null,
+  "managedUserDataRelativePath": "Users\\{UserName}\\.dotfiles-managed",
+  "managedAppRelativePath": "Apps",
+  "notes": "preferredDrive is optional. Leave null to use package manager defaults."
+}

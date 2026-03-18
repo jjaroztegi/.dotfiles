@@ -1,3 +1,5 @@
+Import-Module (Join-Path (Split-Path -Parent $PSScriptRoot) "lib\Common.psm1") -Force
+
 function Set-WindowsTerminalDefaults {
     param (
         [string]$ThemeUrl = "https://raw.githubusercontent.com/mbadolato/iTerm2-Color-Schemes/master/windowsterminal/Gruber%20Darker.json",

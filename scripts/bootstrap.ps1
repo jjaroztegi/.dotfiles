@@ -2,6 +2,8 @@ param(
     [string]$OriginalUserProfile,
     [string]$OriginalAppData,
     [string]$OriginalLocalAppData,
+    [ValidatePattern('^[A-Za-z]:$')]
+    [string]$PreferredDrive,
     [ValidateSet('Auto', 'User', 'Admin')]
     [string]$Phase = 'Auto',
     [switch]$AdminManifestOnly,
@@ -54,6 +56,7 @@ $libDir = Join-Path $PSScriptRoot "lib"
 $env:PSModulePath = $libDir + [IO.Path]::PathSeparator + $env:PSModulePath
 
 Import-Module (Join-Path $libDir "Common.psm1") -Force
+Import-Module (Join-Path $modulesDir "BootstrapWorkflow.psm1") -Force
 
 if ([string]::IsNullOrWhiteSpace($LogPath)) {
     if (-not [string]::IsNullOrWhiteSpace($env:DOTFILES_LOG_PATH)) {
@@ -68,10 +71,6 @@ $env:DOTFILES_LOG_PATH = $LogPath
 Start-SetupTranscript -LogPath $LogPath
 Write-LogInfo "Log file: $LogPath"
 Write-LogInfo ("Session: Phase={0} PID={1} PS={2} Admin={3}" -f $Phase, $PID, $PSVersionTable.PSVersion, (Test-IsAdmin))
-
-if ($OriginalUserProfile) {
-    Write-LogInfo "Original user context: $OriginalUserProfile"
-}
 
 # Enforce TLS 1.2
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -160,6 +159,9 @@ if ($PSVersionTable.PSVersion.Major -lt 7) {
     if ($Phase) {
         $scriptArgs += @("-Phase", $Phase)
     }
+    if ($PreferredDrive) {
+        $scriptArgs += @("-PreferredDrive", $PreferredDrive.ToUpperInvariant())
+    }
     if ($AdminManifestOnly) {
         $scriptArgs += "-AdminManifestOnly"
     }
@@ -171,129 +173,9 @@ if ($PSVersionTable.PSVersion.Major -lt 7) {
     exit
 }
 
-Import-Module (Join-Path $modulesDir "Install-PackageManagers.psm1") -Force
-Import-Module (Join-Path $modulesDir "Install-DevTools.psm1") -Force
-Import-Module (Join-Path $modulesDir "Install-Fonts.psm1") -Force
-Import-Module (Join-Path $modulesDir "Install-PowerShellModules.psm1") -Force
-Import-Module (Join-Path $modulesDir "Configure-WindowsTerminal.psm1") -Force
-
-function Invoke-UserSetup {
-    Write-LogInfo "Starting User Setup..."
-
-    if (-not (Test-InternetConnection)) {
-        throw "Internet connection required."
-    }
-
-    Install-PackageManagers
-    Install-DevTools
-
-    if (Get-Command fnm -ErrorAction SilentlyContinue) {
-        Write-LogInfo "Configuring fnm (Node 24)..."
-        fnm install 24
-        fnm default 24
-    }
-
-    if (Get-Command pyenv -ErrorAction SilentlyContinue) {
-        Write-LogInfo "Configuring pyenv-win (Latest Python)..."
-        $latestPython = pyenv install --list | Where-Object { $_.Trim() -match '^\d+\.\d+\.\d+$' } | Select-Object -Last 1
-        if ($latestPython) {
-            Write-LogInfo "Installing Python $latestPython..."
-            pyenv install $latestPython
-            pyenv global $latestPython
-        }
-    }
-
-    Install-NerdFonts
-    Install-PowerShellModules -Modules @("Terminal-Icons", "posh-git", "PSFzf")
-
-    Write-LogInfo "`n--- Deploying Dotfiles ---"
-    & (Join-Path $PSScriptRoot "deploy.ps1") -ContinueOnAccessDenied
-
-    Write-LogInfo "`n--- Configuring Windows Terminal ---"
-    Set-WindowsTerminalDefaults
-
-    Ensure-StandardPaths -IsAdmin (Test-IsAdmin) | Out-Null
-
-    Write-LogOK "`nUser Setup Completed Successfully!"
-}
-
-function Invoke-AdminSetup {
-    Write-LogInfo "Starting Admin Setup..."
-
-    if (-not (Test-InternetConnection)) {
-        throw "Internet connection required."
-    }
-
-    Install-PackageManagers
-
-    Write-LogInfo "`n--- Deploying Protected Dotfiles ---"
-    & (Join-Path $PSScriptRoot "deploy.ps1") -OnlyProtectedPaths
-
-    Ensure-StandardPaths -IsAdmin $true | Out-Null
-
-    Write-LogOK "`nAdmin Setup Completed Successfully!"
-}
-
-function Invoke-AdminElevation {
-    Write-LogWarn "Running as standard user. System installations require Admin privileges."
-    $choice = Read-Host "Do you want to restart with Administrator privileges? (y/N)"
-    if ($choice -match '^[Yy]$') {
-        $exe = if (Get-Command pwsh -ErrorAction SilentlyContinue) { "pwsh" } else { "powershell" }
-        Write-LogInfo "Restarting elevated..."
-
-        $scriptArgs = @("-NoExit", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$PSCommandPath`"", "-Phase", "Admin", "-AdminManifestOnly")
-        $scriptArgs += @("-OriginalUserProfile", "`"$env:USERPROFILE`"", "-OriginalAppData", "`"$env:APPDATA`"", "-OriginalLocalAppData", "`"$env:LOCALAPPDATA`"")
-        if ($LogPath) {
-            $scriptArgs += @("-LogPath", "`"$LogPath`"")
-        }
-
-        Stop-SetupTranscript
-        Start-Process $exe -ArgumentList $scriptArgs -Verb RunAs
-        return $true
-    }
-    return $false
-}
-
-function Show-ExitPrompt {
-    Write-LogInfo "Please restart your terminal."
-    Write-Host "`nPress any key to exit..." -ForegroundColor Gray
-    $null = [Console]::ReadKey($true)
-}
-
 try {
     Write-LogInfo "Starting Setup..."
-
-    $isAdmin = Test-IsAdmin
-
-    switch ($Phase) {
-        'User' {
-            Invoke-UserSetup
-            Stop-SetupTranscript
-            Show-ExitPrompt
-        }
-        'Admin' {
-            if (-not $isAdmin) {
-                if (Invoke-AdminElevation) { return }
-                throw "Administrator privileges are required to run the admin phase."
-            }
-            Invoke-AdminSetup
-            Stop-SetupTranscript
-            Show-ExitPrompt
-        }
-        default {
-            if ($isAdmin) {
-                Invoke-UserSetup
-                Stop-SetupTranscript
-                Show-ExitPrompt
-            }
-            else {
-                Invoke-UserSetup
-                Invoke-AdminElevation | Out-Null
-                Stop-SetupTranscript
-                Show-ExitPrompt
-            }
-        }
-    }
+    Start-DotfilesBootstrap -Phase $Phase -ScriptPath $PSCommandPath -PreferredDrive $PreferredDrive -OriginalUserProfile $OriginalUserProfile -OriginalAppData $OriginalAppData -OriginalLocalAppData $OriginalLocalAppData -LogPath $LogPath -AdminManifestOnly:$AdminManifestOnly
 }
 catch {
     Write-LogError "Setup failed: $_"

@@ -1,33 +1,13 @@
-function Install-DevTools {
-    Write-LogInfo "Installing Developer Tools..."
+Import-Module (Join-Path (Split-Path -Parent $PSScriptRoot) "lib\Common.psm1") -Force
+Import-Module (Join-Path (Split-Path -Parent $PSScriptRoot) "lib\SetupEnvironment.psm1") -Force
+Import-Module (Join-Path $PSScriptRoot "ManagedPackages.psm1") -Force
 
-    Install-Software -Name "Windows Terminal" -ExecutableName "wt"         -WingetId "Microsoft.WindowsTerminal"      -ChocoId "microsoft-windows-terminal" -ScoopId "main/windows-terminal"
-    Install-Software -Name "PowerShell 7"     -ExecutableName "pwsh"       -WingetId "Microsoft.PowerShell"           -ChocoId "powershell-core"            -ScoopId "main/pwsh"
-    Install-Software -Name "VS Code"          -ExecutableName "code"       -WingetId "Microsoft.VisualStudioCode"     -ChocoId "vscode"                     -ScoopId "extras/vscode"
-    Install-Software -Name "Neovim"           -ExecutableName "nvim"       -WingetId "Neovim.Neovim"                  -ChocoId "neovim"                     -ScoopId "main/neovim"
-    Install-Software -Name "fzf"              -ExecutableName "fzf"        -WingetId "junegunn.fzf"                   -ChocoId "fzf"                        -ScoopId "main/fzf"
-    Install-Software -Name "zoxide"           -ExecutableName "zoxide"     -WingetId "ajeetdsouza.zoxide"             -ChocoId "zoxide"                     -ScoopId "main/zoxide"
-    Install-Software -Name "ripgrep"          -ExecutableName "rg"         -WingetId "BurntSushi.ripgrep.MSVC"        -ChocoId "ripgrep"                    -ScoopId "main/ripgrep"
-    Install-Software -Name "oh-my-posh"       -ExecutableName "oh-my-posh" -WingetId "JanDeDobbeleer.OhMyPosh"        -ChocoId "oh-my-posh"                 -ScoopId "main/oh-my-posh"
-    Install-Software -Name "winfetch"         -ExecutableName "winfetch"   -WingetId "nepnep.neofetch-win"            -ChocoId "winfetch"                   -ScoopId "main/winfetch"
-    Install-Software -Name "fd"               -ExecutableName "fd"         -WingetId "sharkdp.fd"                     -ChocoId "fd"                         -ScoopId "main/fd"
-    Install-Software -Name "ast-grep"         -ExecutableName "ast-grep"   -WingetId "ast-grep.ast-grep"              -ChocoId "ast-grep"                   -ScoopId "main/ast-grep"
-    Install-Software -Name "uv"               -ExecutableName "uv"         -WingetId "astral-sh.uv"                   -ChocoId "uv"                         -ScoopId "main/uv"
-    Install-Software -Name "deno"             -ExecutableName "deno"       -WingetId "denoland.deno"                  -ChocoId "deno"                       -ScoopId "main/deno"
-    Install-Software -Name "golang"           -ExecutableName "go"         -WingetId "GoLang.Go"                      -ChocoId "golang"                     -ScoopId "main/go"
-    Install-Software -Name "pyenv-win"        -ExecutableName "pyenv"                                                 -ChocoId "pyenv-win"                  -ScoopId "main/pyenv-win"
-    Install-Software -Name "fnm"              -ExecutableName "fnm"        -WingetId "Schniz.fnm"                     -ChocoId "fnm"                        -ScoopId "main/fnm"
-    Install-Software -Name "Java JDK 25"      -ExecutableName "java"       -WingetId "EclipseAdoptium.Temurin.25.JDK" -ChocoId "temurin25"                  -ScoopId "java/temurin-25-jdk"
-    Install-Software -Name "CMake"            -ExecutableName "cmake"      -WingetId "Kitware.CMake"                  -ChocoId "cmake"                      -ScoopId "main/cmake"
-    Install-Software -Name "FFmpeg"           -ExecutableName "ffmpeg"     -WingetId "Gyan.FFmpeg"                    -ChocoId "ffmpeg"                     -ScoopId "main/ffmpeg"
-    Install-Software -Name "Pandoc"           -ExecutableName "pandoc"     -WingetId "JohnMacFarlane.Pandoc"          -ChocoId "pandoc"                     -ScoopId "main/pandoc"
-    Install-Software -Name "7-Zip"            -ExecutableName "7z"         -WingetId "7zip.7zip"                      -ChocoId "7zip"                       -ScoopId "main/7zip"
-    Install-Software -Name "QuickLook"        -ExecutableName "QuickLook"  -WingetId "QL-Win.QuickLook"               -ChocoId "quicklook"                  -ScoopId "extras/quicklook"
-    Install-Software -Name "MSYS2"            -ExecutableName "msys2"      -WingetId "MSYS2.MSYS2"                    -ChocoId "msys2"                      -ScoopId "main/msys2"
-    Install-Software -Name "bat"              -ExecutableName "bat"        -WingetId "sharkdp.bat"                    -ChocoId "bat"                        -ScoopId "main/bat"
-    Install-Software -Name "jq"               -ExecutableName "jq"         -WingetId "jqlang.jq"                      -ChocoId "jq"                         -ScoopId "main/jq"
-    Install-Software -Name "btop"             -ExecutableName "btop"       -WingetId "aristocratos.btop4win"          -ChocoId "btop"                       -ScoopId "main/btop"
-    Install-Software -Name "Ghostscript"      -ExecutableName "gs"                                                    -ChocoId "ghostscript"                -ScoopId "main/ghostscript"
+function Install-DevTools {
+    Write-LogInfo "Installing Developer Tools from package catalog..."
+
+    foreach ($package in Get-ManagedPackages) {
+        Install-ManagedPackage -Package $package
+    }
 }
 
 Export-ModuleMember -Function Install-DevTools
