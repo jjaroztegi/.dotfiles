@@ -1,0 +1,11 @@
+common/.gitconfig|symlink|
+common/.gitignore|symlink|
+common/shell/zsh/themes/robbyrussell.zsh-theme|symlink|$ZSH_CUSTOM/themes/robbyrussell.zsh-theme
+common/shell/tmux/.tmux.conf|symlink|
+common/shell/tmux/scripts/tmux-sessionizer.sh|symlink|~/scripts/tmux-sessionizer.sh
+common/config/btop/btop.conf|symlink|~/.config/btop/btop.conf
+common/shell/zsh/.zshrc|symlink|
+common/shell/zsh/rc.d/10-tooling.zsh|symlink|~/.config/zsh/rc.d/10-tooling.zsh
+linux/shell/zsh/rc.d/30-linux.zsh|symlink|~/.config/zsh/rc.d/30-linux.zsh
+common/vscode/settings.json|symlink|~/.config/Code/User/settings.json
+common/vscode/keybindings.json|symlink|~/.config/Code/User/keybindings.json

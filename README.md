@@ -1,6 +1,6 @@
 # .dotfiles
 
-A repository of my personal dotfiles for Windows and Linux/MacOS.
+A repository of my personal dotfiles for Windows, macOS, and Linux.
 
 ## Overview
 
@@ -10,21 +10,29 @@ This repository contains configuration files and installation scripts to quickly
 
 ```
 .
-├── config/                  # Windows package, placement, and runtime policy
-├── common/                  # Shared configurations (git, ignore)
-├── manifests/               # Manifest files
-│   ├── unix.manifest        # Configuration manifest for Unix systems
-│   └── windows.manifest     # Configuration manifest for Windows systems
+├── config/                  # Windows and Unix package/runtime policy
+├── common/                  # Shared cross-platform config
+│   ├── config/              # Shared app config (btop, etc.)
+│   ├── shell/               # Shared shell config (zsh, tmux)
+│   └── vscode/              # Shared VS Code settings
+├── linux/                   # Linux-specific shell overlays
+├── macos/                   # macOS-specific shell overlays
+├── manifests/               # OS-specific manifest files
+│   ├── linux.manifest       # Configuration manifest for Linux
+│   ├── macos.manifest       # Configuration manifest for macOS
+│   └── windows.manifest     # Configuration manifest for Windows
 ├── scripts/                 # Deployment and setup scripts
 │   ├── bootstrap.ps1        # Windows entrypoint for full machine setup
+│   ├── bootstrap.sh         # macOS/Linux bootstrap (packages + dotfiles)
 │   ├── deploy.ps1           # Windows dotfiles linker
 │   ├── ensure-runtime-tooling.ps1 # Runtime maintenance entrypoint
-│   └── deploy.sh            # Unix deployment script
+│   └── deploy.sh            # macOS/Linux deployment script
 │
-├── scripts/lib/             # Shared PowerShell helper modules
+├── scripts/lib/             # Shared PowerShell and shell helpers
 │   ├── Common.psm1          # Generic logging, probing, and transcript helpers
 │   ├── SetupEnvironment.psm1 # Placement, package catalog, runtime policy, and PATH helpers
-│   └── ManifestHelpers.psm1 # Manifest/deployment helper functions
+│   ├── ManifestHelpers.psm1 # Manifest/deployment helper functions
+│   └── unix-common.sh       # Shared shell helpers for Unix bootstrap
 ├── scripts/modules/         # Windows setup feature modules
 │   ├── BootstrapWorkflow.psm1 # User/admin setup orchestration
 │   ├── ManagedPackages.psm1   # Catalog-driven package install/state/shim logic
@@ -34,7 +42,6 @@ This repository contains configuration files and installation scripts to quickly
 │   ├── Install-Fonts.psm1
 │   ├── Install-PowerShellModules.psm1
 │   └── Configure-WindowsTerminal.psm1
-├── unix/                    # Unix-specific configuration
 └── windows/                 # Windows-specific configuration
 ```
 
@@ -86,7 +93,7 @@ irm "https://tinyurl.com/mum8xazv" | iex
 > [!IMPORTANT]
 > The scripts now feature **Context Preservation**. Even when elevating to Administrator, your `HOME` and `AppData` paths are preserved, ensuring dotfiles are deployed to your user profile, not the Admin's.
 
-### Linux/macOS
+### macOS / Linux
 
 1. Clone the repository
 
@@ -95,17 +102,33 @@ irm "https://tinyurl.com/mum8xazv" | iex
    cd .dotfiles
    ```
 
-2. Deploy dotfiles
+2. Bootstrap packages and deploy dotfiles
    ```bash
-   ./scripts/deploy.sh
+   ./scripts/bootstrap.sh
    ```
+
+This auto-detects `macOS` vs `Linux`, installs packages with `brew` or `apt`, and applies the matching manifest.
+For dotfiles only:
+
+```bash
+./scripts/deploy.sh
+```
+
+For a dry run:
+
+```bash
+./scripts/bootstrap.sh --dry-run
+```
 
 ## How It Works
 
 This dotfiles manager uses a manifest-based approach to manage configuration files:
 
-- `manifests/windows.manifest` - Configuration for Windows systems
-- `manifests/unix.manifest` - Configuration for Linux/macOS systems
+- `manifests/windows.manifest` for Windows
+- `manifests/macos.manifest` for macOS
+- `manifests/linux.manifest` for Linux
+
+Unix package bootstrap policy lives in `config/unix-packages.sh`.
 
 ### Manifest Format
 
@@ -124,7 +147,7 @@ Where:
 Example:
 
 ```
-unix/shell/.zshrc|copy|
+common/shell/zsh/.zshrc|symlink|
 windows/shell/Microsoft.PowerShell_profile.ps1|symlink|$ProfileDir\Microsoft.PowerShell_profile.ps1
 ```
 
@@ -132,9 +155,11 @@ windows/shell/Microsoft.PowerShell_profile.ps1|symlink|$ProfileDir\Microsoft.Pow
 
 1. Fork this repository
 2. Modify the manifests in `manifests/` to include your own configuration files
-3. Adjust Windows behavior in `config/placement.json`, `config/package-catalog.json`, and `config/runtime-policy.json`
-4. Update the deployment scripts if needed
-5. Run the deployment scripts on your machines
+3. Put shared shell config in `common/` and OS-specific overlays in `macos/` or `linux/`
+4. Adjust Unix package policy in `config/unix-packages.sh`
+5. Adjust Windows behavior in `config/placement.json`, `config/package-catalog.json`, and `config/runtime-policy.json`
+6. Update the deployment scripts if needed
+7. Run the deployment scripts on your machines
 
 Rebuild profile-independent Node/Python runtime entry points from policy:
 

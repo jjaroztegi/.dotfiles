@@ -1,11 +1,69 @@
 #!/usr/bin/env bash
 
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 
 DRY_RUN="${DRY_RUN:-false}"
+MANIFEST_PATH="${DOTFILES_MANIFEST:-}"
+
+usage() {
+    cat <<'EOF'
+Usage: ./scripts/deploy.sh [--dry-run] [--manifest <path>]
+
+Options:
+  --dry-run           Preview changes without modifying files.
+  --manifest <path>   Use a specific manifest path relative to the repo root.
+  -h, --help          Show this help text.
+EOF
+}
+
+detect_manifest() {
+    local kernel_name
+    kernel_name="$(uname -s)"
+
+    case "$kernel_name" in
+    Darwin)
+        echo "manifests/macos.manifest"
+        ;;
+    Linux)
+        echo "manifests/linux.manifest"
+        ;;
+    *)
+        printf "[ERROR] Unsupported platform: %s\n" "$kernel_name" >&2
+        exit 1
+        ;;
+    esac
+}
+
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+        --dry-run)
+            DRY_RUN="true"
+            ;;
+        --manifest)
+            shift
+            if [[ $# -eq 0 ]]; then
+                printf "[ERROR] --manifest requires a value.\n" >&2
+                exit 1
+            fi
+            MANIFEST_PATH="$1"
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            printf "[ERROR] Unknown argument: %s\n" "$1" >&2
+            usage >&2
+            exit 1
+            ;;
+        esac
+        shift
+    done
+}
 
 resolve_path() {
     local path="$1"
@@ -227,5 +285,13 @@ install_zsh_environment() {
     install_plugin "zsh-syntax-highlighting" "https://github.com/zsh-users/zsh-syntax-highlighting.git"
 }
 
+parse_args "$@"
+
+if [[ -z "$MANIFEST_PATH" ]]; then
+    MANIFEST_PATH="$(detect_manifest)"
+fi
+
+printf "[INFO] Using manifest: %s\n" "$MANIFEST_PATH"
+
 install_zsh_environment
-deployManifest "manifests/unix.manifest"
+deployManifest "$MANIFEST_PATH"
