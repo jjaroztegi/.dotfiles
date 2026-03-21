@@ -29,11 +29,6 @@
     "when": "editorTextFocus"
   },
   {
-    "key": "shift+alt+j",
-    "command": "workbench.action.splitEditorDown",
-    "when": "editorTextFocus"
-  },
-  {
     "key": "shift+alt+k",
     "command": "workbench.action.moveEditorToAboveGroup",
     "when": "editorTextFocus"
@@ -94,8 +89,7 @@
     "command": "runCommands",
     "args": {
       "commands": ["workbench.action.toggleMaximizedPanel", "workbench.action.terminal.focus"]
-    },
-    "when": "!terminalFocus || terminalFocus"
+    }
   },
   {
     "key": "ctrl+shift+t",
@@ -109,11 +103,11 @@
   // EDITOR GROUP MANAGEMENT
   //==============================================================================
   {
-    "key": "alt+h",
+    "key": "ctrl+alt+h",
     "command": "workbench.action.decreaseViewWidth"
   },
   {
-    "key": "alt+l",
+    "key": "ctrl+alt+l",
     "command": "workbench.action.increaseViewWidth"
   },
   {
