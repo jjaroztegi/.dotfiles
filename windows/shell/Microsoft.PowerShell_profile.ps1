@@ -31,18 +31,61 @@ function Update-PowerShell {
     try {
         Write-Host "Checking for PowerShell updates..." -ForegroundColor Cyan
         $updateNeeded = $false
-        $currentVersion = $PSVersionTable.PSVersion.ToString()
+        $currentVersion = [version]$PSVersionTable.PSVersion.ToString()
         $gitHubApiUrl = "https://api.github.com/repos/PowerShell/PowerShell/releases/latest"
         $latestReleaseInfo = Invoke-RestMethod -Uri $gitHubApiUrl
-        $latestVersion = $latestReleaseInfo.tag_name.Trim('v')
+        $latestVersion = [version]$latestReleaseInfo.tag_name.Trim('v')
         if ($currentVersion -lt $latestVersion) {
             $updateNeeded = $true
         }
 
         if ($updateNeeded) {
             Write-Host "Updating PowerShell..." -ForegroundColor Yellow
-            Start-Process powershell.exe -ArgumentList "-NoProfile -Command winget upgrade Microsoft.PowerShell --accept-source-agreements --accept-package-agreements" -Wait -NoNewWindow
-            Write-Host "PowerShell has been updated. Please restart your shell to reflect changes" -ForegroundColor Magenta
+            & winget upgrade --id Microsoft.PowerShell -e --source winget --accept-source-agreements --accept-package-agreements
+            $upgradeExitCode = $LASTEXITCODE
+
+            $installedVersion = [version](Get-Command pwsh).Version.ToString()
+            if ($installedVersion -ge $latestVersion) {
+                Write-Host "PowerShell has been updated. Please restart your shell to reflect changes" -ForegroundColor Magenta
+                return
+            }
+
+            $installerType = $null
+            $uninstallKeys = @(
+                'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
+                'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall',
+                'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall'
+            )
+
+            foreach ($key in $uninstallKeys) {
+                $entry = Get-ChildItem $key -ErrorAction SilentlyContinue |
+                    ForEach-Object { Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue } |
+                    Where-Object {
+                        $_.DisplayName -like 'PowerShell 7*' -and
+                        $_.UninstallString -match 'MsiExec\.exe'
+                    } |
+                    Select-Object -First 1
+
+                if ($entry) {
+                    $installerType = 'MSI'
+                    break
+                }
+            }
+
+            if ($installerType -eq 'MSI') {
+                Write-Warning "Winget could not upgrade this PowerShell install in place. The current installation is MSI-based."
+                Write-Host "Clean reinstall commands:" -ForegroundColor Yellow
+                Write-Host "  winget uninstall --id Microsoft.PowerShell -e --all-versions --force" -ForegroundColor Yellow
+                Write-Host "  winget install --id Microsoft.PowerShell -e --scope machine --source winget --accept-source-agreements --accept-package-agreements" -ForegroundColor Yellow
+                return
+            }
+
+            if ($upgradeExitCode -ne 0) {
+                Write-Error "PowerShell upgrade failed with exit code $upgradeExitCode."
+                return
+            }
+
+            Write-Warning "Winget finished, but the installed PowerShell version is still $installedVersion."
         }
         else {
             Write-Host "Your PowerShell is up to date." -ForegroundColor Green
@@ -319,7 +362,7 @@ function uptime {
     }
 }
 
-function update-profile {
+function Invoke-Profile {
     & $PROFILE
 }
 
@@ -645,7 +688,7 @@ $($PSStyle.Foreground.Green)ff$($PSStyle.Reset) <name> - Finds files recursively
 $($PSStyle.Foreground.Green)Get-PubIP$($PSStyle.Reset) - Retrieves the public IP address of the machine.
 $($PSStyle.Foreground.Green)winutil$($PSStyle.Reset) - Runs the latest WinUtil full-release script from Chris Titus Tech.
 $($PSStyle.Foreground.Green)uptime$($PSStyle.Reset) - Displays the system uptime.
-$($PSStyle.Foreground.Green)update-profile$($PSStyle.Reset) - Reloads the current user's PowerShell profile.
+$($PSStyle.Foreground.Green)Invoke-Profile$($PSStyle.Reset) - Reloads the current user's PowerShell profile.
 $($PSStyle.Foreground.Green)unzip$($PSStyle.Reset) <file> - Extracts a zip file to the current directory.
 $($PSStyle.Foreground.Green)hb$($PSStyle.Reset) <file> - Uploads the specified file's content to a hastebin-like service and returns the URL.
 $($PSStyle.Foreground.Green)df$($PSStyle.Reset) - Displays information about volumes.
