@@ -73,10 +73,131 @@ function Set-CommandWrapperContent {
     return $true
 }
 
-function Update-FnmCommandWrappers {
+function Set-PosixCommandWrapperContent {
     param(
         [Parameter(Mandatory = $true)]
-        [string[]]$Commands,
+        [string]$Path,
+        [Parameter(Mandatory = $true)]
+        [string]$Content
+    )
+
+    $normalizedContent = ($Content -replace "`r`n", "`n").TrimEnd("`n") + "`n"
+    $existing = if (Test-Path $Path -PathType Leaf) {
+        [System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::ASCII)
+    }
+    else {
+        $null
+    }
+
+    if ($existing -ceq $normalizedContent) {
+        return $false
+    }
+
+    [System.IO.File]::WriteAllText($Path, $normalizedContent, [System.Text.Encoding]::ASCII)
+    return $true
+}
+
+function Get-ResolvedExecutablePath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+        [ValidateSet('Leaf', 'Container')]
+        [string]$PathType = 'Leaf'
+    )
+
+    $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+    if (($PathType -eq 'Leaf') -and $item.PSIsContainer) {
+        throw "Expected a file path but found a directory: $Path"
+    }
+
+    if (($PathType -eq 'Container') -and -not $item.PSIsContainer) {
+        throw "Expected a directory path but found a file: $Path"
+    }
+
+    if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -and $item.Target) {
+        foreach ($target in @($item.Target)) {
+            if ([string]::IsNullOrWhiteSpace($target)) {
+                continue
+            }
+
+            $candidate = if ([System.IO.Path]::IsPathRooted($target)) {
+                $target
+            }
+            else {
+                Join-Path (Split-Path -Parent $item.FullName) $target
+            }
+
+            if (Test-Path -LiteralPath $candidate -PathType $PathType) {
+                return $candidate
+            }
+        }
+    }
+
+    if ($item.PSObject.Properties.Name -contains 'ResolvedTarget' -and $item.ResolvedTarget) {
+        if ($item.ResolvedTarget -is [System.Array]) {
+            foreach ($target in $item.ResolvedTarget) {
+                if ($target -and (Test-Path -LiteralPath $target -PathType $PathType)) {
+                    return $target
+                }
+            }
+        }
+        elseif (Test-Path -LiteralPath $item.ResolvedTarget -PathType $PathType) {
+            return $item.ResolvedTarget
+        }
+    }
+
+    if (Test-Path -LiteralPath $item.FullName -PathType $PathType) {
+        return $item.FullName
+    }
+
+    throw "Unable to resolve a valid $PathType path for $Path"
+}
+
+function Get-FnmManagedCommandLeaf {
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('node', 'npm', 'npx', 'corepack')]
+        [string]$CommandName
+    )
+
+    switch ($CommandName) {
+        'node' { return 'node.exe' }
+        'npm' { return 'npm.cmd' }
+        'npx' { return 'npx.cmd' }
+        'corepack' { return 'corepack.cmd' }
+    }
+}
+
+function Get-FnmDefaultInstallationPath {
+    $aliasRoot = Get-FnmDefaultAliasRoot
+    if (-not (Test-Path -LiteralPath $aliasRoot -PathType Container)) {
+        throw "fnm default alias is missing at $aliasRoot"
+    }
+
+    return (Get-ResolvedExecutablePath -Path $aliasRoot -PathType Container)
+}
+
+function Get-FnmManagedCommandPath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$InstallationPath,
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('node', 'npm', 'npx', 'corepack')]
+        [string]$CommandName
+    )
+
+    $targetPath = Join-Path $InstallationPath (Get-FnmManagedCommandLeaf -CommandName $CommandName)
+    if (-not (Test-Path -LiteralPath $targetPath -PathType Leaf)) {
+        throw "Unable to resolve fnm-managed $CommandName target at $targetPath"
+    }
+
+    return $targetPath
+}
+
+function Update-FnmExecutableWrapper {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FnmPath,
         [switch]$Apply
     )
 
@@ -85,20 +206,61 @@ function Update-FnmCommandWrappers {
         New-Item -Path $shimRoot -ItemType Directory -Force | Out-Null
     }
 
-    $aliasRoot = Get-FnmDefaultAliasRoot
+    $resolvedFnmPath = Get-ResolvedExecutablePath -Path $FnmPath
+    $quotedFnmPath = '"' + $resolvedFnmPath + '"'
+    $cmdWrapperPath = Join-Path $shimRoot 'fnm.cmd'
+    $cmdWrapper = @"
+@echo off
+setlocal
+$quotedFnmPath %*
+set "exitCode=%ERRORLEVEL%"
+endlocal & exit /b %exitCode%
+"@
+
+    $ps1WrapperPath = Join-Path $shimRoot 'fnm.ps1'
+    $ps1Wrapper = @"
+& $quotedFnmPath @args
+exit `$LASTEXITCODE
+"@
+
+    $posixWrapperPath = Join-Path $shimRoot 'fnm'
+    $posixWrapper = @"
+#!/usr/bin/env sh
+exec $quotedFnmPath "`$@"
+"@
+
+    if ($Apply) {
+        $cmdUpdated = Set-CommandWrapperContent -Path $cmdWrapperPath -Content $cmdWrapper
+        $ps1Updated = Set-CommandWrapperContent -Path $ps1WrapperPath -Content $ps1Wrapper
+        $posixUpdated = Set-PosixCommandWrapperContent -Path $posixWrapperPath -Content $posixWrapper
+        if ($cmdUpdated -or $ps1Updated -or $posixUpdated) {
+            Write-LogInfo "Updated fnm wrapper in $shimRoot"
+        }
+        else {
+            Write-LogSkip "fnm wrapper is already current."
+        }
+    }
+    else {
+        Write-LogDryRun "Would register fnm wrappers in $shimRoot"
+    }
+}
+
+function Update-FnmCommandWrappers {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$Commands,
+        [Parameter(Mandatory = $true)]
+        [string]$InstallationPath,
+        [switch]$Apply
+    )
+
+    $shimRoot = Get-UserShimRoot
+    if (-not (Test-Path $shimRoot -PathType Container)) {
+        New-Item -Path $shimRoot -ItemType Directory -Force | Out-Null
+    }
+
     foreach ($command in $Commands) {
-        $targetPath = switch ($command) {
-            'node' { Join-Path $aliasRoot 'node.exe' }
-            'npm' { Join-Path $aliasRoot 'npm.cmd' }
-            'npx' { Join-Path $aliasRoot 'npx.cmd' }
-            'corepack' { Join-Path $aliasRoot 'corepack.cmd' }
-            default { throw "Unsupported Node runtime wrapper target: $command" }
-        }
-
-        if (-not (Test-Path $targetPath -PathType Leaf)) {
-            throw "Unable to resolve fnm default alias target for $command at $targetPath"
-        }
-
+        $targetPath = Get-FnmManagedCommandPath -InstallationPath $InstallationPath -CommandName $command
         $quotedTargetPath = '"' + $targetPath + '"'
         $cmdWrapperPath = Join-Path $shimRoot ("{0}.cmd" -f $command)
         $cmdWrapper = @"
@@ -109,16 +271,23 @@ set "exitCode=%ERRORLEVEL%"
 endlocal & exit /b %exitCode%
 "@
 
-        $ps1WrapperPath = Join-Path $shimRoot ("{0}.ps1" -f $command)
-        $ps1Wrapper = @"
-& $quotedTargetPath @args
-exit `$LASTEXITCODE
+        $posixWrapperPath = Join-Path $shimRoot $command
+        $posixWrapper = @"
+#!/usr/bin/env sh
+exec $quotedTargetPath "`$@"
 "@
 
         if ($Apply) {
             $cmdUpdated = Set-CommandWrapperContent -Path $cmdWrapperPath -Content $cmdWrapper
-            $ps1Updated = Set-CommandWrapperContent -Path $ps1WrapperPath -Content $ps1Wrapper
-            if ($cmdUpdated -or $ps1Updated) {
+            $posixUpdated = Set-PosixCommandWrapperContent -Path $posixWrapperPath -Content $posixWrapper
+            $ps1WrapperPath = Join-Path $shimRoot ("{0}.ps1" -f $command)
+            $removedPs1Wrapper = $false
+            if (Test-Path $ps1WrapperPath -PathType Leaf) {
+                Remove-Item -LiteralPath $ps1WrapperPath -Force
+                $removedPs1Wrapper = $true
+            }
+
+            if ($cmdUpdated -or $posixUpdated -or $removedPs1Wrapper) {
                 Write-LogInfo "Updated fnm wrapper for $command in $shimRoot"
             }
             else {
@@ -153,7 +322,9 @@ function Set-NodeRuntimeState {
         Write-LogDryRun "Would install/set default Node.js $($runtimePolicy.version) via fnm"
     }
 
-    Update-FnmCommandWrappers -Commands @($runtimePolicy.commands) -Apply:$Apply
+    $defaultInstallationPath = Get-FnmDefaultInstallationPath
+    Update-FnmExecutableWrapper -FnmPath $fnmPath -Apply:$Apply
+    Update-FnmCommandWrappers -Commands @($runtimePolicy.commands) -InstallationPath $defaultInstallationPath -Apply:$Apply
 }
 
 function Set-PythonRuntimeState {

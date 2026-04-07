@@ -120,12 +120,6 @@ function prompt {
 }
 $adminSuffix = if ($isAdmin) { " [ADMIN]" } else { "" }
 
-# Utility Functions
-function Test-CommandExists {
-    param($command)
-    return $null -ne (Get-Command $command -ErrorAction SilentlyContinue)
-}
-
 function Test-IsInteractiveTerminal {
     if (-not $Host.UI -or -not $Host.UI.RawUI) {
         return $false
@@ -137,6 +131,14 @@ function Test-IsInteractiveTerminal {
     catch {
         return $false
     }
+}
+
+function Test-IsSshSession {
+    return (
+        -not [string]::IsNullOrWhiteSpace($env:SSH_CONNECTION) -or
+        -not [string]::IsNullOrWhiteSpace($env:SSH_CLIENT) -or
+        -not [string]::IsNullOrWhiteSpace($env:SSH_TTY)
+    )
 }
 
 function Test-SupportsVirtualTerminal {
@@ -152,28 +154,150 @@ function Test-SupportsVirtualTerminal {
     }
 }
 
-function Get-ProfileMode {
-    if ($env:POWERSHELL_PROFILE_MODE -eq 'full') {
-        return 'interactive'
+function Get-ProfileSessionType {
+    $requestedMode = "$env:POWERSHELL_PROFILE_MODE".Trim().ToLowerInvariant()
+    switch ($requestedMode) {
+        'full' { return 'desktop' }
+        'interactive' { return 'desktop' }
+        'desktop' { return 'desktop' }
+        'ssh' { return 'ssh' }
+        'remote' { return 'ssh' }
+        'lean' { return 'noninteractive' }
+        'minimal' { return 'noninteractive' }
+        'noninteractive' { return 'noninteractive' }
     }
 
-    if ($env:POWERSHELL_PROFILE_MODE -eq 'lean') {
-        return 'lean'
+    if (-not (Test-IsInteractiveTerminal)) {
+        return 'noninteractive'
     }
 
-    if (Test-IsInteractiveTerminal) {
-        return 'interactive'
+    if (Test-IsSshSession) {
+        return 'ssh'
     }
 
-    return 'lean'
+    return 'desktop'
 }
 
-$script:ProfileMode = Get-ProfileMode
-$script:IsInteractiveProfile = ($script:ProfileMode -eq 'interactive') -and (Test-IsInteractiveTerminal)
+$script:ProfileSessionType = Get-ProfileSessionType
+$script:IsSshSession = ($script:ProfileSessionType -eq 'ssh')
+$script:IsDesktopProfile = ($script:ProfileSessionType -eq 'desktop')
+$script:IsInteractiveProfile = $script:IsDesktopProfile -or $script:IsSshSession
 
-if ($script:IsInteractiveProfile) {
+function Write-SessionUnsupportedError {
+    param([Parameter(Mandatory = $true)][string]$Feature)
+
+    $sessionLabel = switch ($script:ProfileSessionType) {
+        'ssh' { 'SSH' }
+        'noninteractive' { 'non-interactive' }
+        default { 'current' }
+    }
+
+    Write-Error "$Feature is not available in $sessionLabel PowerShell sessions."
+}
+
+function Test-CanUsePredictionListView {
+    if (-not (Test-SupportsVirtualTerminal)) {
+        return $false
+    }
+
+    try {
+        $windowSize = $Host.UI.RawUI.WindowSize
+        return ($windowSize.Width -ge 50) -and ($windowSize.Height -ge 5)
+    }
+    catch {
+        return $false
+    }
+}
+
+function Resolve-ExistingPathForNativeTool {
+    param(
+        [string]$Path,
+        [ValidateSet('Any', 'Leaf', 'Container')]
+        [string]$PathType = 'Any'
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return $null
+    }
+
+    try {
+        $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+    }
+    catch {
+        return $null
+    }
+
+    if ($PathType -eq 'Leaf' -and $item.PSIsContainer) {
+        return $null
+    }
+
+    if ($PathType -eq 'Container' -and -not $item.PSIsContainer) {
+        return $null
+    }
+
+    if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -and $item.Target) {
+        foreach ($target in @($item.Target)) {
+            if ([string]::IsNullOrWhiteSpace($target)) {
+                continue
+            }
+
+            $candidate = if ([System.IO.Path]::IsPathRooted($target)) {
+                $target
+            }
+            else {
+                Join-Path (Split-Path -Parent $item.FullName) $target
+            }
+
+            if (Test-Path -LiteralPath $candidate -PathType $PathType -ErrorAction SilentlyContinue) {
+                return $candidate
+            }
+        }
+    }
+
+    return $item.FullName
+}
+
+function Initialize-HomeAndGitEnvironment {
+    $homeCandidates = @(
+        $env:HOME,
+        [Environment]::GetEnvironmentVariable('HOME', 'User'),
+        $env:USERPROFILE,
+        [Environment]::GetFolderPath('UserProfile'),
+        ('{0}{1}' -f $env:HOMEDRIVE, $env:HOMEPATH)
+    ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+
+    foreach ($candidate in $homeCandidates) {
+        $resolvedHome = Resolve-ExistingPathForNativeTool -Path $candidate -PathType Container
+        if ($resolvedHome) {
+            $env:HOME = $resolvedHome
+            break
+        }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($env:USERPROFILE) -and -not [string]::IsNullOrWhiteSpace($env:HOME)) {
+        $env:USERPROFILE = $env:HOME
+    }
+
+    $gitConfigCandidates = @(
+        $env:GIT_CONFIG_GLOBAL,
+        $(if ($env:HOME) { Join-Path $env:HOME '.gitconfig' }),
+        $(if ($env:USERPROFILE) { Join-Path $env:USERPROFILE '.gitconfig' })
+    ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+
+    foreach ($candidate in $gitConfigCandidates) {
+        $resolvedGitConfig = Resolve-ExistingPathForNativeTool -Path $candidate -PathType Leaf
+        if ($resolvedGitConfig) {
+            $env:GIT_CONFIG_GLOBAL = $resolvedGitConfig
+            break
+        }
+    }
+}
+
+if ($script:IsDesktopProfile) {
     $Host.UI.RawUI.WindowTitle = "PowerShell {0}$adminSuffix" -f $PSVersionTable.PSVersion.ToString()
 }
+
+Initialize-HomeAndGitEnvironment
 
 $ChocolateyProfile = "$env:ChocolateyInstall\helpers\chocolateyProfile.psm1"
 $script:ChocolateyProfileLoaded = $false
@@ -201,32 +325,126 @@ function refreshenv {
     Update-SessionEnvironment @args
 }
 
-function Get-OhMyPoshExecutable {
-    $stablePath = Join-Path $env:LOCALAPPDATA 'Programs\oh-my-posh\bin\oh-my-posh.exe'
-    if (Test-Path $stablePath -PathType Leaf) {
-        return $stablePath
-    }
-
-    $candidates = @(
-        (Join-Path $env:ProgramFiles 'oh-my-posh\bin\oh-my-posh.exe'),
-        (Join-Path $env:USERPROFILE 'scoop\apps\oh-my-posh\current\bin\oh-my-posh.exe')
+function Resolve-ManagedExecutable {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$CommandName,
+        [Parameter(Mandatory = $true)]
+        [string]$ExecutableLeaf,
+        [string[]]$AdditionalCandidates = @(),
+        [string]$ScoopCurrentPath,
+        [string]$WinGetPackagePattern,
+        [switch]$AllowWinGetLink
     )
 
-    $command = Get-Command oh-my-posh -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($command -and $command.Source -and $command.Source -notlike '*\Microsoft\WindowsApps\*') {
-        $candidates += $command.Source
+    $candidates = [System.Collections.Generic.List[string]]::new()
+
+    $command = Get-Command $CommandName -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($command) {
+        $commandSource = if ($command.Source) { $command.Source } elseif ($command.Path) { $command.Path } else { $null }
+        if (
+            $commandSource -and
+            $commandSource -notlike '*\Microsoft\WindowsApps\*' -and
+            ($AllowWinGetLink -or $commandSource -notlike '*\Microsoft\WinGet\Links\*')
+        ) {
+            $candidates.Add($commandSource)
+        }
     }
 
-    return $candidates | Where-Object { $_ -and (Test-Path $_ -PathType Leaf) } | Select-Object -First 1
-}
+    foreach ($candidate in $AdditionalCandidates) {
+        if (-not [string]::IsNullOrWhiteSpace($candidate)) {
+            $candidates.Add($candidate)
+        }
+    }
 
-function Get-FnmExecutable {
-    $wingetPath = Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Links\fnm.exe'
-    if (Test-Path $wingetPath -PathType Leaf) {
-        return $wingetPath
+    if (-not [string]::IsNullOrWhiteSpace($ScoopCurrentPath)) {
+        $candidates.Add($ScoopCurrentPath)
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($WinGetPackagePattern)) {
+        $wingetPackagesRoot = Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Packages'
+        if (Test-Path $wingetPackagesRoot -PathType Container) {
+            $packagePath = Get-ChildItem -Path $wingetPackagesRoot -Directory -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -like $WinGetPackagePattern } |
+                Sort-Object Name -Descending |
+                Select-Object -First 1
+
+            if ($packagePath) {
+                $candidates.Add((Join-Path $packagePath.FullName $ExecutableLeaf))
+            }
+        }
+    }
+
+    if ($AllowWinGetLink -and -not $script:IsSshSession) {
+        $candidates.Add((Join-Path $env:LOCALAPPDATA ("Microsoft\WinGet\Links\{0}" -f $ExecutableLeaf)))
+    }
+
+    foreach ($candidate in $candidates | Select-Object -Unique) {
+        $resolvedPath = Resolve-ExistingPathForNativeTool -Path $candidate -PathType Leaf
+        if ($resolvedPath) {
+            return $resolvedPath
+        }
     }
 
     return $null
+}
+
+function Get-OhMyPoshExecutable {
+    return Resolve-ManagedExecutable -CommandName 'oh-my-posh' -ExecutableLeaf 'oh-my-posh.exe' -AdditionalCandidates @(
+        (Join-Path $env:LOCALAPPDATA 'Programs\oh-my-posh\bin\oh-my-posh.exe'),
+        (Join-Path $env:ProgramFiles 'oh-my-posh\bin\oh-my-posh.exe')
+    ) -ScoopCurrentPath (Join-Path $env:USERPROFILE 'scoop\apps\oh-my-posh\current\bin\oh-my-posh.exe')
+}
+
+function Get-ZoxideExecutable {
+    return Resolve-ManagedExecutable -CommandName 'zoxide' -ExecutableLeaf 'zoxide.exe' -ScoopCurrentPath (Join-Path $env:USERPROFILE 'scoop\apps\zoxide\current\zoxide.exe') -WinGetPackagePattern 'ajeetdsouza.zoxide_*' -AllowWinGetLink
+}
+
+function Get-FzfExecutable {
+    return Resolve-ManagedExecutable -CommandName 'fzf' -ExecutableLeaf 'fzf.exe' -AdditionalCandidates @(
+        $(if ($env:ChocolateyInstall) { Join-Path $env:ChocolateyInstall 'bin\fzf.exe' })
+    ) -ScoopCurrentPath (Join-Path $env:USERPROFILE 'scoop\apps\fzf\current\fzf.exe') -WinGetPackagePattern 'junegunn.fzf_*' -AllowWinGetLink
+}
+
+function Set-ZoxideCommandWrapper {
+    param([string]$FilePath)
+
+    if ([string]::IsNullOrWhiteSpace($FilePath)) {
+        return
+    }
+
+    $script:ZoxideExecutable = $FilePath
+
+    function global:zoxide {
+        if (-not $script:ZoxideExecutable) {
+            Write-Error "zoxide executable is not configured."
+            return
+        }
+
+        & $script:ZoxideExecutable @args
+    }
+}
+
+function Add-NativeToolDirectoryToPath {
+    param([string]$FilePath)
+
+    if ([string]::IsNullOrWhiteSpace($FilePath)) {
+        return
+    }
+
+    $toolDirectory = Split-Path -Parent $FilePath
+    if ([string]::IsNullOrWhiteSpace($toolDirectory) -or -not (Test-Path $toolDirectory -PathType Container)) {
+        return
+    }
+
+    $pathEntries = @($env:PATH -split ';') | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    $normalizedDirectory = $toolDirectory.TrimEnd('\')
+    $alreadyPresent = $pathEntries | Where-Object { $_.TrimEnd('\') -ieq $normalizedDirectory } | Select-Object -First 1
+    if ($alreadyPresent) {
+        return
+    }
+
+    $env:PATH = "$toolDirectory;$env:PATH"
 }
 
 function Sync-OhMyPoshExecutable {
@@ -390,7 +608,9 @@ function hb {
         $response = Invoke-RestMethod -Uri $uri -Method Post -Body $Content -ErrorAction Stop
         $hasteKey = $response.key
         $url = "http://bin.christitus.com/$hasteKey"
-        Set-Clipboard $url
+        if ($script:IsDesktopProfile) {
+            Set-Clipboard $url
+        }
         Write-Output $url
     }
     catch {
@@ -449,9 +669,26 @@ function du {
 function nf { param($name) New-Item -ItemType "file" -Path . -Name $name }
 
 # Directory Management
-function mkcd { param($dir) mkdir $dir -Force; Set-Location $dir }
+function Invoke-ProfileLocationChange {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $cdFunction = Get-Command cd -CommandType Function -ErrorAction SilentlyContinue
+    if ($cdFunction) {
+        & $cdFunction $Path
+        return
+    }
+
+    Set-Location -LiteralPath $Path
+}
+
+function mkcd { param($dir) mkdir $dir -Force; Invoke-ProfileLocationChange -Path $dir }
 
 function trash($path) {
+    if (-not $script:IsDesktopProfile) {
+        Write-SessionUnsupportedError -Feature 'trash'
+        return
+    }
+
     $fullPath = (Resolve-Path -Path $path).Path
     if (Test-Path $fullPath) {
         $item = Get-Item $fullPath
@@ -474,13 +711,13 @@ function trash($path) {
 # Navigation Shortcuts
 function docs {
     $docs = if (([Environment]::GetFolderPath("MyDocuments"))) { ([Environment]::GetFolderPath("MyDocuments")) } else { $HOME + "\Documents" }
-    Set-Location -Path $docs
+    Invoke-ProfileLocationChange -Path $docs
 }
 function dtop {
     $dtop = if ([Environment]::GetFolderPath("Desktop")) { [Environment]::GetFolderPath("Desktop") } else { $HOME + "\Documents" }
-    Set-Location -Path $dtop
+    Invoke-ProfileLocationChange -Path $dtop
 }
-function dev { Set-Location 'D:\Code' }
+function dev { Invoke-ProfileLocationChange -Path 'D:\Code' }
 
 # Simplified Process Management
 function k9 { Stop-Process -Name $args[0] }
@@ -507,7 +744,7 @@ function g {
         return
     }
 
-    Write-Error "zoxide is not initialized in lean profile mode."
+    Write-Error "zoxide is not initialized in $($script:ProfileSessionType) profile sessions."
 }
 function gcl { git clone "$args" }
 function gcom {
@@ -536,17 +773,32 @@ Set-Alias -Name reboot -Value Restart-System
 Set-Alias -Name reboot-uefi -Value Restart-Uefi
 
 # Clipboard Utilities
-function cpy { Set-Clipboard $args[0] }
-function pst { Get-Clipboard }
+function cpy {
+    if (-not $script:IsDesktopProfile) {
+        Write-SessionUnsupportedError -Feature 'cpy'
+        return
+    }
+
+    Set-Clipboard $args[0]
+}
+function pst {
+    if (-not $script:IsDesktopProfile) {
+        Write-SessionUnsupportedError -Feature 'pst'
+        return
+    }
+
+    Get-Clipboard
+}
 
 # Enhanced PowerShell Experience
 # Enhanced PSReadLine Configuration with Gruber Darker Theme
 
-if ($script:IsInteractiveProfile) {
+function Initialize-PSReadLine {
     Import-Module PSReadLine -ErrorAction SilentlyContinue
-}
+    if (-not (Get-Module -Name PSReadLine)) {
+        return
+    }
 
-if ($script:IsInteractiveProfile -and (Get-Module -Name PSReadLine)) {
     $PSReadLineOptions = @{
         EditMode                      = 'Emacs'
         HistoryNoDuplicates           = $true
@@ -569,7 +821,7 @@ if ($script:IsInteractiveProfile -and (Get-Module -Name PSReadLine)) {
 
     if (Test-SupportsVirtualTerminal) {
         $PSReadLineOptions.PredictionSource = 'HistoryAndPlugin'
-        $PSReadLineOptions.PredictionViewStyle = 'ListView'
+        $PSReadLineOptions.PredictionViewStyle = if (Test-CanUsePredictionListView) { 'ListView' } else { 'InlineView' }
     }
 
     Set-PSReadLineOption @PSReadLineOptions
@@ -594,14 +846,9 @@ if ($script:IsInteractiveProfile -and (Get-Module -Name PSReadLine)) {
         return ($null -eq $hasSensitive)
     }
 
-    # Custom key bindings for PSFzf
-    if (Get-Module -Name PSFzf -ListAvailable) {
-        Import-Module PSFzf -ErrorAction SilentlyContinue
-        Set-PsFzfOption -PSReadlineChordProvider 'Ctrl+t' -PSReadlineChordReverseHistory 'Ctrl+r' -PSReadlineChordSetLocation 'Alt+c'
-    }
 }
 
-if ($script:IsInteractiveProfile) {
+function Initialize-NativeArgumentCompleters {
     # Custom completion for common commands
     $scriptblock = {
         param($wordToComplete, $commandAst, $cursorPosition)
@@ -621,17 +868,29 @@ if ($script:IsInteractiveProfile) {
     }
     Register-ArgumentCompleter -Native -CommandName git, npm, deno -ScriptBlock $scriptblock
 
-    $scriptblock = {
-        param($wordToComplete, $commandAst, $cursorPosition)
-        dotnet complete --position $cursorPosition $commandAst.ToString() |
-            ForEach-Object {
-                [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
-            }
+    if (Get-Command dotnet -CommandType Application -ErrorAction SilentlyContinue) {
+        $scriptblock = {
+            param($wordToComplete, $commandAst, $cursorPosition)
+            dotnet complete --position $cursorPosition $commandAst.ToString() |
+                ForEach-Object {
+                    [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
+                }
+        }
+        Register-ArgumentCompleter -Native -CommandName dotnet -ScriptBlock $scriptblock
     }
-    Register-ArgumentCompleter -Native -CommandName dotnet -ScriptBlock $scriptblock
+}
 
+function Initialize-OhMyPosh {
     # Set Theme
-    $null = Sync-OhMyPoshExecutable
+    if ($script:IsDesktopProfile) {
+        try {
+            $null = Sync-OhMyPoshExecutable
+        }
+        catch {
+            Write-Verbose "Skipping oh-my-posh sync: $_"
+        }
+    }
+
     $ohMyPoshPath = Get-OhMyPoshExecutable
     if ($ohMyPoshPath) {
         $themePath = Join-Path (Split-Path -Parent $PROFILE) "oh-my-posh_cobalt2.omp.json"
@@ -650,28 +909,63 @@ if ($script:IsInteractiveProfile) {
             Write-Verbose "Skipping oh-my-posh initialization: $_"
         }
     }
+}
 
-    # fnm (Node.js version manager)
-    $fnmPath = Get-FnmExecutable
-    if ($fnmPath) {
-        & $fnmPath env --use-on-cd | Out-String | Invoke-Expression
-    }
-
+function Initialize-Zoxide {
     # Set up zoxide
-    if (Get-Command zoxide -ErrorAction SilentlyContinue) {
+    $zoxidePath = Get-ZoxideExecutable
+    if ($zoxidePath) {
+        Set-ZoxideCommandWrapper -FilePath $zoxidePath
         $zoxideCache = Join-Path $env:TEMP "zoxide_cache.ps1"
         if (-not (Test-Path $zoxideCache)) {
-            zoxide init --cmd cd powershell | Out-String | Out-File $zoxideCache -Encoding utf8
+            & $zoxidePath init --cmd cd powershell | Out-String | Out-File $zoxideCache -Encoding utf8
         }
         . $zoxideCache
 
-        function z_and_list {
+        function global:z_and_list {
             __zoxide_z @args
             ll
         }
         Set-Alias -Name z -Value z_and_list -Option AllScope -Scope Global -Force
         Set-Alias -Name zi -Value __zoxide_zi -Option AllScope -Scope Global -Force
     }
+}
+
+function Initialize-PSFzf {
+    if (-not (Get-Module -Name PSReadLine)) {
+        return
+    }
+
+    $fzfPath = Get-FzfExecutable
+    if (-not $fzfPath) {
+        return
+    }
+
+    Add-NativeToolDirectoryToPath -FilePath $fzfPath
+
+    if (Get-Module -Name PSFzf -ListAvailable) {
+        try {
+            Import-Module PSFzf -ErrorAction Stop
+            if (Get-Command Set-PsFzfOption -ErrorAction SilentlyContinue) {
+                Set-PsFzfOption -PSReadlineChordProvider 'Ctrl+t' -PSReadlineChordReverseHistory 'Ctrl+r' -PSReadlineChordSetLocation 'Alt+c'
+            }
+        }
+        catch {
+            Write-Verbose "Skipping PSFzf initialization: $_"
+        }
+    }
+}
+
+function Initialize-InteractiveShell {
+    Initialize-PSReadLine
+    Initialize-NativeArgumentCompleters
+    Initialize-OhMyPosh
+    Initialize-Zoxide
+    Initialize-PSFzf
+}
+
+if ($script:IsInteractiveProfile) {
+    Initialize-InteractiveShell
 }
 
 # Help Function

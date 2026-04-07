@@ -139,6 +139,7 @@ function Test-IsStalePathEntry {
 
     $stalePatterns = @(
         '*\AppData\Local\Microsoft\WinGet\Packages\*',
+        '*\AppData\Roaming\fnm\aliases\default',
         '*\ProgramData\chocolatey\lib\*'
     )
 
@@ -156,9 +157,9 @@ function Get-PreferredPathEntries {
 
     if ($Scope -eq 'User') {
         $entries = @(
-            (Join-Path $env:LOCALAPPDATA "Microsoft\WindowsApps"),
+            (Join-Path $env:USERPROFILE ".local\bin"),
             (Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Links"),
-            (Join-Path $env:USERPROFILE ".local\bin")
+            (Join-Path $env:LOCALAPPDATA "Microsoft\WindowsApps")
         )
 
         $pwshScripts = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'PowerShell\Scripts'
@@ -237,6 +238,14 @@ function Repair-PathScope {
         }
 
         if (Test-IsStalePathEntry -Entry $normalized) {
+            continue
+        }
+
+        if (
+            ($Scope -eq 'User') -and
+            $env:APPDATA -and
+            ($normalized -ieq (Join-Path $env:APPDATA "fnm\aliases\default"))
+        ) {
             continue
         }
 

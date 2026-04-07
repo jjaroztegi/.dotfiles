@@ -1,12 +1,12 @@
 windows/apps/winfetch/config.ps1|copy|~\.config\winfetch\config.ps1
-common/.gitconfig|symlink|
-common/.gitignore|symlink|
+common/.gitconfig|copy|
+common/.gitignore|copy|
 windows/shell/.wslconfig|symlink|
 windows/autostart/AppToggle.ahk|symlink|shell:startup
 windows/apps/msi-afterburner/MSIAfterburner.cfg|copy|$AppPath[MSI Afterburner]\Profiles\MSIAfterburner.cfg
 windows/apps/rivatuner/|copy|$AppPath[RivaTuner Statistics Server]\Profiles
-windows/shell/Microsoft.PowerShell_profile.ps1|symlink|$ProfileDir\Microsoft.PowerShell_profile.ps1
-windows/shell/oh-my-posh_cobalt2.omp.json|symlink|$ProfileDir\oh-my-posh_cobalt2.omp.json
-windows/shell/powershell.config.json|symlink|$ProfileDir\powershell.config.json
+windows/shell/Microsoft.PowerShell_profile.ps1|copy|$ProfileDir\Microsoft.PowerShell_profile.ps1
+windows/shell/oh-my-posh_cobalt2.omp.json|copy|$ProfileDir\oh-my-posh_cobalt2.omp.json
+windows/shell/powershell.config.json|copy|$ProfileDir\powershell.config.json
 common/vscode/settings.json|symlink|$AppData\Code\User\settings.json
 common/vscode/keybindings.json|symlink|$AppData\Code\User\keybindings.json
