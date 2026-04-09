@@ -1,120 +1,63 @@
 # .dotfiles
 
-A repository of my personal dotfiles for Windows, macOS, and Linux.
-
-## Overview
-
-This repository contains configuration files and installation scripts to quickly set up a consistent environment across different machines.
-
-## Repository Structure
-
-```
-.
-├── config/                  # Windows and Unix package/runtime policy
-├── common/                  # Shared cross-platform config
-│   ├── config/              # Shared app config (btop, etc.)
-│   ├── shell/               # Shared shell config (zsh, tmux)
-│   └── vscode/              # Shared VS Code settings
-├── linux/                   # Linux-specific shell overlays
-├── macos/                   # macOS-specific shell overlays
-├── manifests/               # OS-specific manifest files
-│   ├── linux.manifest       # Configuration manifest for Linux
-│   ├── macos.manifest       # Configuration manifest for macOS
-│   └── windows.manifest     # Configuration manifest for Windows
-├── scripts/                 # Deployment and setup scripts
-│   ├── bootstrap.ps1        # Windows entrypoint for full machine setup
-│   ├── bootstrap.sh         # macOS/Linux bootstrap (packages + dotfiles)
-│   ├── deploy.ps1           # Windows dotfiles linker
-│   ├── ensure-runtime-tooling.ps1 # Runtime maintenance entrypoint
-│   └── deploy.sh            # macOS/Linux deployment script
-│
-├── scripts/lib/             # Shared PowerShell and shell helpers
-│   ├── Common.psm1          # Generic logging, probing, and transcript helpers
-│   ├── SetupEnvironment.psm1 # Placement, package catalog, runtime policy, and PATH helpers
-│   ├── ManifestHelpers.psm1 # Manifest/deployment helper functions
-│   └── unix-common.sh       # Shared shell helpers for Unix bootstrap
-├── scripts/modules/         # Windows setup feature modules
-│   ├── BootstrapWorkflow.psm1 # User/admin setup orchestration
-│   ├── ManagedPackages.psm1   # Catalog-driven package install/state/shim logic
-│   ├── RuntimeTooling.psm1    # Profile-independent Node/Python runtime setup
-│   ├── Install-PackageManagers.psm1
-│   ├── Install-DevTools.psm1
-│   ├── Install-Fonts.psm1
-│   ├── Install-PowerShellModules.psm1
-│   └── Configure-WindowsTerminal.psm1
-└── windows/                 # Windows-specific configuration
-```
+A small cross-platform dotfiles repo for Windows, macOS, and Linux.
 
 ## Quick Start
 
+Clone the repo:
+
+```bash
+git clone https://github.com/jjaroztegi/.dotfiles.git
+cd .dotfiles
+```
+
 ### Windows
 
-1. **Bootstrap Environment** (Installs PowerShell 7, Winget, Git if missing)
+First-run shortcut:
 
 ```powershell
 irm "https://tinyurl.com/mum8xazv" | iex
 ```
 
-2. **Clone the repository**
+Or run the full bootstrap from a local clone:
 
-   ```powershell
-   git clone https://github.com/jjaroztegi/.dotfiles.git
-   cd .dotfiles
-   ```
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File .\scripts\bootstrap.ps1
+```
 
-3. **Deploy**
+Prefer another drive for placement-aware installs:
 
-   Run with `ExecutionPolicy Bypass` to ensure the script runs regardless of system settings:
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File .\scripts\bootstrap.ps1 -PreferredDrive D:
+```
 
-   For a full setup (Apps + Fonts + Dotfiles):
+Deploy dotfiles only:
 
-   ```powershell
-   powershell.exe -ExecutionPolicy Bypass -File .\scripts\bootstrap.ps1
-   ```
+```powershell
+pwsh -ExecutionPolicy Bypass -File .\scripts\deploy.ps1
+```
 
-   To prefer a specific install drive for placement-aware packages:
+Notes:
 
-   ```powershell
-   powershell.exe -ExecutionPolicy Bypass -File .\scripts\bootstrap.ps1 -PreferredDrive D:
-   ```
-
-   For just dotfiles linking (supports `-WhatIf` for dry-run):
-
-   ```powershell
-   pwsh -ExecutionPolicy Bypass -File .\scripts\deploy.ps1
-   ```
-
-> [!NOTE]
-> **Privileges & Symlinks**: `deploy.ps1` does not automatically prompt for elevation.
->
-> - To create **Symbolic Links**, you must either run the script as **Administrator** or have **Developer Mode** enabled on Windows.
-> - If neither is available, the script will automatically fallback to **copying** the files instead.
-
-> [!IMPORTANT]
-> The scripts now feature **Context Preservation**. Even when elevating to Administrator, your `HOME` and `AppData` paths are preserved, ensuring dotfiles are deployed to your user profile, not the Admin's.
+- A standard-user run handles user-scoped setup.
+- An admin run handles machine-wide installs and deferred packages.
+- `deploy.ps1` creates symlinks when possible and falls back to copying when it cannot.
 
 ### macOS / Linux
 
-1. Clone the repository
+Bootstrap packages and dotfiles:
 
-   ```bash
-   git clone https://github.com/jjaroztegi/.dotfiles.git
-   cd .dotfiles
-   ```
+```bash
+./scripts/bootstrap.sh
+```
 
-2. Bootstrap packages and deploy dotfiles
-   ```bash
-   ./scripts/bootstrap.sh
-   ```
-
-This auto-detects `macOS` vs `Linux`, installs packages with `brew` or `apt`, and applies the matching manifest.
-For dotfiles only:
+Deploy dotfiles only:
 
 ```bash
 ./scripts/deploy.sh
 ```
 
-For a dry run:
+Dry run:
 
 ```bash
 ./scripts/bootstrap.sh --dry-run
@@ -122,49 +65,44 @@ For a dry run:
 
 ## How It Works
 
-This dotfiles manager uses a manifest-based approach to manage configuration files:
+The repo is manifest-driven:
 
-- `manifests/windows.manifest` for Windows
-- `manifests/macos.manifest` for macOS
-- `manifests/linux.manifest` for Linux
+- `manifests/windows.manifest`
+- `manifests/macos.manifest`
+- `manifests/linux.manifest`
 
-Unix package bootstrap policy lives in `config/unix-packages.sh`.
-
-### Manifest Format
-
-Each line in a manifest file has the following format:
+Each line is:
 
 ```
 source_path|operation|destination_path
 ```
 
-Where:
-
-- `source_path`: The file in the repo to be processed (relative to repo root).
-- `operation`: The operation to perform (`symlink` or `copy`).
-- `destination_path`: The target location on the system. Supports variables like `~`, `$HOME`, `$ProfileDir`, `$AppData`, and `$AppPath[Name]`.
-
-Example:
-
-```
-common/shell/zsh/.zshrc|symlink|
-windows/shell/Microsoft.PowerShell_profile.ps1|symlink|$ProfileDir\Microsoft.PowerShell_profile.ps1
-```
-
 ## Customization
 
-1. Fork this repository
-2. Modify the manifests in `manifests/` to include your own configuration files
-3. Put shared shell config in `common/` and OS-specific overlays in `macos/` or `linux/`
-4. Adjust Unix package policy in `config/unix-packages.sh`
-5. Adjust Windows behavior in `config/placement.json`, `config/package-catalog.json`, and `config/runtime-policy.json`
-6. Update the deployment scripts if needed
-7. Run the deployment scripts on your machines
+Edit the manifests, shared config in `common/`, and OS-specific files in `windows/`, `macos/`, or `linux/`.
 
-Rebuild profile-independent Node/Python runtime entry points from policy:
+To refresh runtime shims on Windows:
 
 ```powershell
 .\scripts\ensure-runtime-tooling.ps1 -Execute
+```
+
+## Repository Structure
+
+```
+.
+├── config/
+├── common/
+├── linux/
+├── macos/
+├── manifests/
+├── scripts/
+│   ├── bootstrap.ps1
+│   ├── bootstrap.sh
+│   ├── deploy.ps1
+│   ├── deploy.sh
+│   └── ensure-runtime-tooling.ps1
+└── windows/
 ```
 
 ## License
