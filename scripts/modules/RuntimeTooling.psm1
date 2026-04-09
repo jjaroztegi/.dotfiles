@@ -9,6 +9,10 @@ function Get-UserPyenvRoot {
     return (Join-Path $env:USERPROFILE ".pyenv\pyenv-win")
 }
 
+function Get-UserPyenvCloneRoot {
+    return (Split-Path -Parent (Get-UserPyenvRoot))
+}
+
 function Get-FnmDefaultAliasRoot {
     return (Join-Path $env:APPDATA "fnm\aliases\default")
 }
@@ -95,6 +99,83 @@ function Set-PosixCommandWrapperContent {
 
     [System.IO.File]::WriteAllText($Path, $normalizedContent, [System.Text.Encoding]::ASCII)
     return $true
+}
+
+function Set-UserEnvironmentVariableIfNeeded {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Name,
+        [Parameter(Mandatory = $true)]
+        [string]$Value
+    )
+
+    $currentValue = [System.Environment]::GetEnvironmentVariable($Name, 'User')
+    if ($currentValue -ceq $Value) {
+        return
+    }
+
+    [void](Set-ScopedEnvironmentVariable -Name $Name -Value $Value -Scope User)
+}
+
+function Invoke-GitExternalCommand {
+    param([Parameter(Mandatory = $true)][string[]]$Arguments)
+
+    if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+        throw "Git is required to install pyenv-win automatically."
+    }
+
+    Invoke-ExternalCommand -FilePath 'git' -Arguments $Arguments
+}
+
+function Ensure-PyenvWinInstalled {
+    param([switch]$Apply)
+
+    $pyenvRoot = Get-UserPyenvRoot
+    $cloneRoot = Get-UserPyenvCloneRoot
+    $pyenvBin = Join-Path $pyenvRoot 'bin'
+    $pyenvShims = Join-Path $pyenvRoot 'shims'
+
+    if (-not (Test-Path -LiteralPath $pyenvRoot -PathType Container)) {
+        if (-not $Apply) {
+            Write-LogDryRun "Would install pyenv-win into $cloneRoot"
+            return
+        }
+        else {
+            if (Test-Path -LiteralPath (Join-Path $cloneRoot '.git') -PathType Container) {
+                Write-LogInfo "Updating pyenv-win checkout in $cloneRoot..."
+                Invoke-GitExternalCommand -Arguments @('-C', $cloneRoot, 'pull', '--ff-only')
+            }
+            else {
+                $parentDir = Split-Path -Parent $cloneRoot
+                if ($parentDir -and -not (Test-Path -LiteralPath $parentDir -PathType Container)) {
+                    New-Item -Path $parentDir -ItemType Directory -Force | Out-Null
+                }
+
+                if (Test-Path -LiteralPath $cloneRoot -PathType Container) {
+                    $existingItems = @(Get-ChildItem -LiteralPath $cloneRoot -Force -ErrorAction SilentlyContinue)
+                    if ($existingItems.Count -gt 0) {
+                        throw "Cannot install pyenv-win because '$cloneRoot' already exists and is not a git checkout."
+                    }
+                }
+
+                Write-LogInfo "Installing pyenv-win from the official git repository..."
+                Invoke-GitExternalCommand -Arguments @('clone', 'https://github.com/pyenv-win/pyenv-win.git', $cloneRoot)
+            }
+        }
+    }
+    elseif ($Apply -and (Test-Path -LiteralPath (Join-Path $cloneRoot '.git') -PathType Container)) {
+        Write-LogInfo "Refreshing pyenv-win checkout in $cloneRoot..."
+        Invoke-GitExternalCommand -Arguments @('-C', $cloneRoot, 'pull', '--ff-only')
+    }
+
+    $pyenvHome = $pyenvRoot.TrimEnd('\') + '\'
+    Set-UserEnvironmentVariableIfNeeded -Name 'PYENV' -Value $pyenvHome
+    Set-UserEnvironmentVariableIfNeeded -Name 'PYENV_ROOT' -Value $pyenvHome
+    Set-UserEnvironmentVariableIfNeeded -Name 'PYENV_HOME' -Value $pyenvHome
+    [void](Add-PathEntry -Entry $pyenvBin -Scope User)
+    [void](Add-PathEntry -Entry $pyenvShims -Scope User)
+    Update-StandardPaths -IsAdmin (Test-IsAdmin) | Out-Null
+    Update-Path
 }
 
 function Get-ResolvedExecutablePath {
@@ -305,7 +386,13 @@ function Set-NodeRuntimeState {
 
     $runtimePolicy = (Get-RuntimePolicy).node
     if (-not (Get-Command fnm -ErrorAction SilentlyContinue)) {
-        throw "fnm is required but not installed."
+        if ($Apply) {
+            Write-LogWarn "fnm is not installed yet. Deferring Node.js runtime configuration until after the admin phase installs managed packages."
+            return
+        }
+
+        Write-LogDryRun "Would configure Node.js via fnm once it is installed."
+        return
     }
 
     $fnmPath = (Get-Command fnm -ErrorAction Stop).Source
@@ -332,6 +419,19 @@ function Set-PythonRuntimeState {
 
     $runtimePolicy = (Get-RuntimePolicy).python
     if (-not (Get-Command pyenv -ErrorAction SilentlyContinue)) {
+        if ($Apply -and -not (Get-Command git -ErrorAction SilentlyContinue)) {
+            Write-LogWarn "Git is not installed yet. Deferring Python runtime configuration until after the admin phase installs managed packages."
+            return
+        }
+
+        Ensure-PyenvWinInstalled -Apply:$Apply
+    }
+
+    if (-not (Get-Command pyenv -ErrorAction SilentlyContinue)) {
+        if (-not $Apply) {
+            Write-LogDryRun "Would ensure pyenv-win is installed and available on PATH"
+            return
+        }
         throw "pyenv-win is required but not installed."
     }
 

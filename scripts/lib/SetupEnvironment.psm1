@@ -45,6 +45,13 @@ function Get-PreferredDrive {
         throw "Preferred drive '$candidate' is invalid. Use a drive root such as D:."
     }
 
+    $driveName = $candidate.TrimEnd(':')
+    $drive = Get-PSDrive -Name $driveName -PSProvider FileSystem -ErrorAction SilentlyContinue
+    if (-not $drive) {
+        Write-LogWarn "Preferred drive '$candidate' is not available. Falling back to package manager defaults."
+        return $null
+    }
+
     return $candidate
 }
 
@@ -158,6 +165,8 @@ function Get-PreferredPathEntries {
     if ($Scope -eq 'User') {
         $entries = @(
             (Join-Path $env:USERPROFILE ".local\bin"),
+            (Join-Path $env:USERPROFILE ".pyenv\pyenv-win\shims"),
+            (Join-Path $env:USERPROFILE ".pyenv\pyenv-win\bin"),
             (Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Links"),
             (Join-Path $env:LOCALAPPDATA "Microsoft\WindowsApps")
         )
@@ -189,6 +198,42 @@ function Get-PreferredPathEntries {
     return @($machineEntries | Where-Object { $_ })
 }
 
+function Set-ScopedEnvironmentVariable {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Name,
+        [AllowEmptyString()]
+        [string]$Value,
+        [ValidateSet('User', 'Machine', 'Process')]
+        [string]$Scope
+    )
+
+    if ($Scope -eq 'Process') {
+        Set-Item -Path "Env:$Name" -Value $Value
+        return $true
+    }
+
+    try {
+        [System.Environment]::SetEnvironmentVariable($Name, $Value, $Scope)
+        if (($Scope -eq 'User') -and ($Name -ieq 'Path')) {
+            $env:DOTFILES_SESSION_USER_PATH = $Value
+        }
+        return $true
+    }
+    catch {
+        if ($Scope -ne 'User') {
+            throw
+        }
+
+        Write-LogWarn "Unable to persist $Name to the user environment. Continuing for the current session only."
+        Set-Item -Path "Env:$Name" -Value $Value
+        if ($Name -ieq 'Path') {
+            $env:DOTFILES_SESSION_USER_PATH = $Value
+        }
+        return $false
+    }
+}
+
 function Set-PathEntries {
     param(
         [ValidateSet('User', 'Machine')]
@@ -197,7 +242,7 @@ function Set-PathEntries {
     )
 
     $newValue = (($Entries | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join ';')
-    [System.Environment]::SetEnvironmentVariable("Path", $newValue, $Scope)
+    [void](Set-ScopedEnvironmentVariable -Name 'Path' -Value $newValue -Scope $Scope)
 }
 
 function Repair-PathScope {
@@ -297,7 +342,7 @@ function Add-PathEntry {
     }
 
     $newPath = if ($parts.Count -gt 0) { ($parts + $normalizedEntry) -join ';' } else { $normalizedEntry }
-    [System.Environment]::SetEnvironmentVariable("Path", $newPath, $Scope)
+    [void](Set-ScopedEnvironmentVariable -Name 'Path' -Value $newPath -Scope $Scope)
     return $true
 }
 
@@ -335,4 +380,4 @@ function Update-StandardPaths {
 Export-ModuleMember -Function Set-PlacementOverride, Get-PlacementConfig, Get-PreferredDrive, Get-ManagedPlacement, `
     Get-PackageCatalog, Get-RuntimePolicy, Get-ManagedPackages, Split-PathEntries, Format-PathEntryText, `
     Test-IsStalePathEntry, Get-PreferredPathEntries, Set-PathEntries, Repair-PathScope, Repair-StandardPaths, `
-    Add-PathEntry, Update-StandardPaths
+    Add-PathEntry, Update-StandardPaths, Set-ScopedEnvironmentVariable

@@ -22,10 +22,10 @@ function Invoke-UserSetupPhase {
     }
 
     Install-PackageManagers
-    Install-DevTools
+    Write-LogInfo "Managed package installation is deferred to the admin phase on Windows."
     Invoke-ManagedRuntimeMaintenance
 
-    Install-NerdFonts
+    Write-LogInfo "Nerd Font installation is deferred to the admin phase on Windows."
     Install-PowerShellModules -Modules @("Terminal-Icons", "posh-git", "PSFzf")
 
     Write-LogInfo "`n--- Deploying Dotfiles ---"
@@ -47,7 +47,17 @@ function Invoke-AdminSetupPhase {
         throw "Internet connection required."
     }
 
+    $excludedPackageKeys = [System.Collections.Generic.List[string]]::new()
+    $excludedPackageKeys.Add('pyenv-win') | Out-Null
+    if (-not (Test-InteractiveSession)) {
+        Write-LogWarn "Ghostscript and MSYS2 installation are skipped in non-interactive admin sessions because their installers can hang."
+        $excludedPackageKeys.Add('ghostscript') | Out-Null
+        $excludedPackageKeys.Add('msys2') | Out-Null
+    }
+
     Install-PackageManagers
+    Install-DevTools -Scope All -ExcludePackageKeys @($excludedPackageKeys)
+    Install-NerdFonts
 
     Write-LogInfo "`n--- Deploying Protected Dotfiles ---"
     & (Join-Path $ScriptsRoot "deploy.ps1") -OnlyProtectedPaths
@@ -69,6 +79,11 @@ function Start-AdminElevationRequest {
     )
 
     Write-LogWarn "Running as standard user. System installations require admin privileges."
+    if (-not (Test-InteractiveSession)) {
+        Write-LogWarn "Interactive elevation is unavailable in this session. Re-run the admin phase from an elevated shell."
+        return $false
+    }
+
     $choice = Read-Host "Do you want to restart with Administrator privileges? (y/N)"
     if ($choice -notmatch '^[Yy]$') {
         return $false
@@ -77,15 +92,15 @@ function Start-AdminElevationRequest {
     $exe = if (Get-Command pwsh -ErrorAction SilentlyContinue) { "pwsh" } else { "powershell" }
     Write-LogInfo "Restarting elevated..."
 
-    $scriptArgs = @("-NoExit", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$ScriptPath`"", "-Phase", "Admin", "-AdminManifestOnly")
-    $scriptArgs += @("-OriginalUserProfile", "`"$OriginalUserProfile`"", "-OriginalAppData", "`"$OriginalAppData`"", "-OriginalLocalAppData", "`"$OriginalLocalAppData`"")
+    $scriptArgs = @("-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $ScriptPath, "-Phase", "Admin", "-AdminManifestOnly")
+    $scriptArgs += @("-OriginalUserProfile", $OriginalUserProfile, "-OriginalAppData", $OriginalAppData, "-OriginalLocalAppData", $OriginalLocalAppData)
 
     if ($PreferredDrive) {
         $scriptArgs += @("-PreferredDrive", $PreferredDrive.ToUpperInvariant())
     }
 
     if ($LogPath) {
-        $scriptArgs += @("-LogPath", "`"$LogPath`"")
+        $scriptArgs += @("-LogPath", $LogPath)
     }
 
     Stop-SetupTranscript
@@ -95,8 +110,7 @@ function Start-AdminElevationRequest {
 
 function Show-BootstrapExitPrompt {
     Write-LogInfo "Please restart your terminal."
-    Write-Host "`nPress any key to exit..." -ForegroundColor Gray
-    $null = [Console]::ReadKey($true)
+    Wait-BootstrapExit
 }
 
 function Start-DotfilesBootstrap {
@@ -156,8 +170,16 @@ function Start-DotfilesBootstrap {
         default {
             Invoke-UserSetupPhase -ScriptsRoot $scriptsRoot
 
-            if (-not $isAdmin) {
-                [void](Start-AdminElevationRequest -ScriptPath $ScriptPath -PreferredDrive $PreferredDrive -OriginalUserProfile $env:USERPROFILE -OriginalAppData $env:APPDATA -OriginalLocalAppData $env:LOCALAPPDATA -LogPath $LogPath -AdminManifestOnly:$AdminManifestOnly)
+            if ($isAdmin) {
+                Invoke-AdminSetupPhase -ScriptsRoot $scriptsRoot
+            }
+            else {
+                $elevationStarted = Start-AdminElevationRequest -ScriptPath $ScriptPath -PreferredDrive $PreferredDrive -OriginalUserProfile $env:USERPROFILE -OriginalAppData $env:APPDATA -OriginalLocalAppData $env:LOCALAPPDATA -LogPath $LogPath -AdminManifestOnly:$AdminManifestOnly
+                if ($elevationStarted) {
+                    return
+                }
+
+                Write-LogWarn "Admin phase was not started. Re-run the bootstrap from an elevated shell to finish machine-level setup."
             }
 
             Stop-SetupTranscript

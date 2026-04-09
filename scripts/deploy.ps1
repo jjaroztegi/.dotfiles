@@ -45,7 +45,12 @@ function Initialize-HomeVariable {
         }
 
         Write-LogInfo "Setting HOME environment variable to: $newHome"
-        [Environment]::SetEnvironmentVariable('HOME', $newHome, 'User')
+        try {
+            [Environment]::SetEnvironmentVariable('HOME', $newHome, 'User')
+        }
+        catch {
+            Write-LogWarn "Unable to persist HOME to the user environment. Continuing for the current session only."
+        }
         $env:HOME = $newHome
 
     }

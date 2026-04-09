@@ -17,14 +17,28 @@ function Add-StringArgs {
 function Invoke-ChocoCommand {
     param([string[]]$Arguments)
 
-    if ((Test-IsAdmin) -or -not (Get-Command sudo -ErrorAction SilentlyContinue)) {
-        & choco @Arguments | Out-Host
+    $command = if ((Test-IsAdmin) -or -not (Get-Command sudo -ErrorAction SilentlyContinue)) {
+        @('choco') + $Arguments
     }
     else {
-        & sudo choco @Arguments | Out-Host
+        @('sudo', 'choco') + $Arguments
     }
 
-    return $LASTEXITCODE
+    $proc = Start-Process -FilePath 'cmd.exe' -ArgumentList (@('/d', '/c') + $command) -NoNewWindow -Wait -PassThru
+
+    return $proc.ExitCode
+}
+
+function Test-InstallExitCodeSuccess {
+    param([int]$ExitCode)
+
+    return $ExitCode -in @(0, 1641, 3010)
+}
+
+function Test-InstallExitCodeRebootRequired {
+    param([int]$ExitCode)
+
+    return $ExitCode -in @(1641, 3010)
 }
 
 function Get-PackageCommands {
@@ -445,7 +459,8 @@ function Update-ManagedCommandShims {
     foreach ($commandName in Get-PackageCommands -Package $Package) {
         $targetPath = Resolve-ManagedCommandTarget -Package $Package -CommandName $commandName
         if (-not $targetPath) {
-            throw "Unable to resolve a command target for '$commandName' in package '$($Package.name)'."
+            Write-LogWarn "Unable to resolve a command target for '$commandName' in package '$($Package.name)' yet. Continuing without a shim."
+            continue
         }
 
         $shimPath = New-CommandShim -CommandName $commandName -TargetPath $targetPath
@@ -521,6 +536,91 @@ function Invoke-ScoopInstall {
 
     scoop install $Package.scoopId | Out-Host
     return $LASTEXITCODE
+}
+
+function Invoke-ManualPackageInstall {
+    param([psobject]$Package)
+
+    switch ($Package.key) {
+        'ast-grep' {
+            $assetName = switch ($env:PROCESSOR_ARCHITECTURE.ToUpperInvariant()) {
+                'ARM64' { 'app-aarch64-pc-windows-msvc.zip' }
+                'X86' { 'app-i686-pc-windows-msvc.zip' }
+                default { 'app-x86_64-pc-windows-msvc.zip' }
+            }
+
+            $installRoot = Join-Path $env:LOCALAPPDATA 'Programs\ast-grep'
+            $zipPath = Join-Path $env:TEMP $assetName
+            $headers = @{ 'User-Agent' = 'dotfiles-bootstrap' }
+
+            try {
+                Write-LogInfo "Installing $($Package.name) via official release archive..."
+                $release = Invoke-RestMethod -Uri 'https://api.github.com/repos/ast-grep/ast-grep/releases/latest' -Headers $headers
+                $asset = $release.assets | Where-Object { $_.name -eq $assetName } | Select-Object -First 1
+                if (-not $asset) {
+                    throw "Unable to find asset '$assetName' in the latest ast-grep release."
+                }
+
+                Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zipPath -Headers $headers
+                if (Test-Path $installRoot) {
+                    Remove-Item $installRoot -Recurse -Force
+                }
+
+                New-Item -Path $installRoot -ItemType Directory -Force | Out-Null
+                Expand-Archive -Path $zipPath -DestinationPath $installRoot -Force
+                Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
+                return 0
+            }
+            catch {
+                Write-LogWarn "Manual install failed for $($Package.name): $($_.Exception.Message)"
+                return 1
+            }
+            finally {
+                Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
+            }
+        }
+        'btop' {
+            $assetName = 'btop4win-x64.zip'
+            $installParent = Join-Path $env:LOCALAPPDATA 'Programs'
+            $installRoot = Join-Path $installParent 'btop4win'
+            $zipPath = Join-Path $env:TEMP $assetName
+            $headers = @{ 'User-Agent' = 'dotfiles-bootstrap' }
+
+            try {
+                Write-LogInfo "Installing $($Package.name) via official release archive..."
+                $release = Invoke-RestMethod -Uri 'https://api.github.com/repos/aristocratos/btop4win/releases/latest' -Headers $headers
+                $asset = $release.assets | Where-Object { $_.name -eq $assetName } | Select-Object -First 1
+                if (-not $asset) {
+                    throw "Unable to find asset '$assetName' in the latest btop4win release."
+                }
+
+                Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zipPath -Headers $headers
+                if (Test-Path $installRoot) {
+                    Remove-Item $installRoot -Recurse -Force
+                }
+
+                New-Item -Path $installParent -ItemType Directory -Force | Out-Null
+                Expand-Archive -Path $zipPath -DestinationPath $installParent -Force
+                $targetPath = Join-Path $installRoot 'btop4win.exe'
+                if (-not (Test-Path $targetPath -PathType Leaf)) {
+                    throw "Expected executable was not found at '$targetPath'."
+                }
+
+                $shimPath = New-CommandShim -CommandName 'btop' -TargetPath $targetPath
+                Write-LogInfo "Registered btop shim at $shimPath"
+                return 0
+            }
+            catch {
+                Write-LogWarn "Manual install failed for $($Package.name): $($_.Exception.Message)"
+                return 1
+            }
+            finally {
+                Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+
+    return $null
 }
 
 function Uninstall-PackageFromManager {
@@ -616,8 +716,11 @@ function Install-ManagedPackage {
                 'scoop' { Invoke-ScoopInstall -Package $Package }
             }
 
-            if ($exitCode -eq 0) {
+            if (Test-InstallExitCodeSuccess -ExitCode $exitCode) {
                 Write-LogOK "Installed $($Package.name)"
+                if (Test-InstallExitCodeRebootRequired -ExitCode $exitCode) {
+                    Write-LogWarn "$($Package.name) requested a reboot to finish setup."
+                }
                 Update-ManagedCommandShims -Package $Package
                 Update-StandardPaths -IsAdmin (Test-IsAdmin) | Out-Null
                 return
@@ -630,7 +733,31 @@ function Install-ManagedPackage {
     }
 
     if ($attemptedManager) {
+        $manualExitCode = Invoke-ManualPackageInstall -Package $Package
+        if ($null -ne $manualExitCode) {
+            if (Test-InstallExitCodeSuccess -ExitCode $manualExitCode) {
+                Write-LogOK "Installed $($Package.name)"
+                Update-ManagedCommandShims -Package $Package
+                Update-StandardPaths -IsAdmin (Test-IsAdmin) | Out-Null
+                return
+            }
+
+            $failedManagers.Add("manual install failed for $($Package.name) with exit code $manualExitCode.") | Out-Null
+        }
+
         throw "Failed to install $($Package.name). $($failedManagers -join ' ')"
+    }
+
+    $manualExitCode = Invoke-ManualPackageInstall -Package $Package
+    if ($null -ne $manualExitCode) {
+        if (Test-InstallExitCodeSuccess -ExitCode $manualExitCode) {
+            Write-LogOK "Installed $($Package.name)"
+            Update-ManagedCommandShims -Package $Package
+            Update-StandardPaths -IsAdmin (Test-IsAdmin) | Out-Null
+            return
+        }
+
+        throw "Failed to install $($Package.name). Manual fallback failed with exit code $manualExitCode."
     }
 
     throw "Failed to install $($Package.name). No usable package manager is available for the configured catalog entry."

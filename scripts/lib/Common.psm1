@@ -32,13 +32,50 @@ function Write-LogBackup { param($Msg) Write-Log -Level 'BACKUP' -Message $Msg }
 function Write-LogDryRun { param($Msg) Write-Log -Level 'DRY-RUN' -Message $Msg }
 
 function Test-InternetConnection {
+    $probeUris = @(
+        'https://www.microsoft.com',
+        'https://github.com'
+    )
+
+    foreach ($probeUri in $probeUris) {
+        try {
+            Invoke-WebRequest -Uri $probeUri -Method Head -UseBasicParsing -TimeoutSec 15 | Out-Null
+            return $true
+        }
+        catch {
+            continue
+        }
+    }
+
+    Write-LogWarn "Internet connection is required but not available."
+    return $false
+}
+
+function Test-InteractiveSession {
+    if ($env:DOTFILES_NONINTERACTIVE -eq '1') {
+        return $false
+    }
+
+    if (-not [Environment]::UserInteractive) {
+        return $false
+    }
+
+    return $Host.Name -eq 'ConsoleHost'
+}
+
+function Wait-BootstrapExit {
+    param([string]$Prompt = "Press any key to exit...")
+
+    if (-not (Test-InteractiveSession)) {
+        return
+    }
+
+    Write-Host "`n$Prompt" -ForegroundColor Gray
     try {
-        Test-Connection -ComputerName "www.google.com" -Count 1 -ErrorAction Stop | Out-Null
-        return $true
+        $null = [Console]::ReadKey($true)
     }
     catch {
-        Write-LogWarn "Internet connection is required but not available."
-        return $false
+        # Some hosts do not expose a readable console even when UserInteractive is true.
     }
 }
 
@@ -62,7 +99,12 @@ function Test-SymlinkCapability {
 function Update-Path {
     Write-LogInfo "Refreshing environment PATH..."
     $machinePath = [System.Environment]::GetEnvironmentVariable("Path", "Machine")
-    $userPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
+    $userPath = if (-not [string]::IsNullOrWhiteSpace($env:DOTFILES_SESSION_USER_PATH)) {
+        $env:DOTFILES_SESSION_USER_PATH
+    }
+    else {
+        [System.Environment]::GetEnvironmentVariable("Path", "User")
+    }
     $env:Path = "$machinePath;$userPath"
 }
 
@@ -216,6 +258,6 @@ function Stop-SetupTranscript {
 }
 
 Export-ModuleMember -Function Test-InternetConnection, Test-IsAdmin, Test-SymlinkCapability, Update-Path, `
-    Test-CommandAvailable, Get-CommandProbeArgs, Test-CommandAccessible, Get-DotfilesRoot, Get-DotfilesConfigPath, Read-JsonFile, `
+    Test-InteractiveSession, Wait-BootstrapExit, Test-CommandAvailable, Get-CommandProbeArgs, Test-CommandAccessible, Get-DotfilesRoot, Get-DotfilesConfigPath, Read-JsonFile, `
     Start-SetupTranscript, Stop-SetupTranscript, `
     Write-Log, Write-LogOK, Write-LogInfo, Write-LogWarn, Write-LogError, Write-LogSkip, Write-LogBackup, Write-LogDryRun

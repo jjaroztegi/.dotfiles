@@ -67,7 +67,13 @@ function Resolve-DynamicPath {
         }
         catch {
             Write-LogWarn "Could not resolve path for '$appName': $_"
+            return $null
         }
+    }
+
+    if ($Path -match '\$AppPath\[(.+?)\]') {
+        Write-LogWarn "Skipping unresolved application path token in destination '$Path'."
+        return $null
     }
 
     return $Path
@@ -134,6 +140,9 @@ function Get-DestinationPath {
     }
 
     $resolved = Resolve-DynamicPath -Path $Destination
+    if ([string]::IsNullOrWhiteSpace($resolved)) {
+        return $null
+    }
 
     # If the destination is an existing directory, append the filename
     if (Test-Path $resolved -PathType Container) {
@@ -207,6 +216,10 @@ function Deploy-Manifest {
         }
 
         $destPath = Get-DestinationPath -Source $sourcePath -Destination $destRaw
+        if ([string]::IsNullOrWhiteSpace($destPath)) {
+            Write-LogSkip "Skipping '$sourceRel' because destination '$destRaw' could not be resolved."
+            return
+        }
 
         $validationErrors = Test-ManifestEntry -Source $sourcePath -Operation $operation -Destination $destRaw
         if ($validationErrors) {

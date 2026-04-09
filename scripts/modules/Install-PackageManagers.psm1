@@ -14,7 +14,7 @@ function Install-PackageManagers {
     if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
         Write-LogWarn "Winget not found. Please install App Installer from Microsoft Store."
     }
-    else {
+    elseif ($isAdmin) {
         Write-LogInfo "Resetting Winget sources to ensure fresh state..."
         try {
             winget source reset --force 2>&1 | Out-Null
@@ -22,6 +22,9 @@ function Install-PackageManagers {
         catch {
             Write-LogWarn "Winget source reset failed. Continuing anyway..."
         }
+    }
+    else {
+        Write-LogInfo "Skipping Winget source reset in standard-user mode."
     }
 
     if ($isAdmin -and $requiresChocolatey -and -not (Get-Command choco -ErrorAction SilentlyContinue)) {
