@@ -17,6 +17,10 @@ function Get-FnmDefaultAliasRoot {
     return (Join-Path $env:APPDATA "fnm\aliases\default")
 }
 
+function Get-FnmRoot {
+    return (Join-Path $env:APPDATA "fnm")
+}
+
 function Invoke-ExternalCommand {
     param(
         [Parameter(Mandatory = $true)]
@@ -60,47 +64,6 @@ function Get-HighestVersionMatch {
     return $null
 }
 
-function Set-CommandWrapperContent {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Path,
-        [Parameter(Mandatory = $true)]
-        [string]$Content
-    )
-
-    $existing = if (Test-Path $Path -PathType Leaf) { Get-Content $Path -Raw } else { $null }
-    if ($existing -ceq $Content) {
-        return $false
-    }
-
-    Set-Content -Path $Path -Value $Content -Encoding ASCII
-    return $true
-}
-
-function Set-PosixCommandWrapperContent {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Path,
-        [Parameter(Mandatory = $true)]
-        [string]$Content
-    )
-
-    $normalizedContent = ($Content -replace "`r`n", "`n").TrimEnd("`n") + "`n"
-    $existing = if (Test-Path $Path -PathType Leaf) {
-        [System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::ASCII)
-    }
-    else {
-        $null
-    }
-
-    if ($existing -ceq $normalizedContent) {
-        return $false
-    }
-
-    [System.IO.File]::WriteAllText($Path, $normalizedContent, [System.Text.Encoding]::ASCII)
-    return $true
-}
-
 function Set-UserEnvironmentVariableIfNeeded {
     param(
         [Parameter(Mandatory = $true)]
@@ -127,6 +90,71 @@ function Invoke-GitExternalCommand {
     Invoke-ExternalCommand -FilePath 'git' -Arguments $Arguments
 }
 
+function Update-PyenvWinGitCheckout {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$CloneRoot
+    )
+
+    $status = Get-TrimmedLines -InputObject (& git -C $CloneRoot status --porcelain 2>$null)
+    if ($status.Count -gt 0) {
+        $nonCacheChanges = @($status | Where-Object { $_ -notmatch '^\s*M\s+pyenv-win/\.versions_cache\.xml$' })
+        if ($nonCacheChanges.Count -gt 0) {
+            Write-LogWarn "pyenv-win checkout at $CloneRoot has local changes. Skipping automatic refresh."
+            return
+        }
+
+        Invoke-GitExternalCommand -Arguments @('-C', $CloneRoot, 'checkout', '--', 'pyenv-win/.versions_cache.xml')
+    }
+
+    Invoke-GitExternalCommand -Arguments @('-C', $CloneRoot, 'fetch', 'origin', 'master')
+    $branch = @(& git -C $CloneRoot rev-parse --abbrev-ref HEAD 2>$null | Select-Object -First 1)[0]
+    if ($branch -eq 'HEAD') {
+        Invoke-GitExternalCommand -Arguments @('-C', $CloneRoot, 'checkout', '-B', 'master', 'origin/master')
+        return
+    }
+
+    Invoke-GitExternalCommand -Arguments @('-C', $CloneRoot, 'pull', '--ff-only', 'origin', 'master')
+}
+
+function Install-PyenvWinFromArchive {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$CloneRoot
+    )
+
+    $parentDir = Split-Path -Parent $CloneRoot
+    if ($parentDir -and -not (Test-Path -LiteralPath $parentDir -PathType Container)) {
+        New-Item -Path $parentDir -ItemType Directory -Force | Out-Null
+    }
+
+    if (Test-Path -LiteralPath $CloneRoot -PathType Container) {
+        $existingItems = @(Get-ChildItem -LiteralPath $CloneRoot -Force -ErrorAction SilentlyContinue)
+        if ($existingItems.Count -gt 0) {
+            throw "Cannot install pyenv-win because '$CloneRoot' already exists and is not empty."
+        }
+    }
+
+    $archivePath = Join-Path $env:TEMP 'pyenv-win.zip'
+    $extractRoot = Join-Path $env:TEMP ("pyenv-win-{0}" -f [guid]::NewGuid())
+
+    try {
+        Write-LogInfo "Installing pyenv-win from the official release archive..."
+        Invoke-WebRequest -Uri 'https://github.com/pyenv-win/pyenv-win/archive/refs/heads/master.zip' -OutFile $archivePath
+        Expand-Archive -Path $archivePath -DestinationPath $extractRoot -Force
+        $sourceRoot = Get-ChildItem -LiteralPath $extractRoot -Directory | Select-Object -First 1
+        if (-not $sourceRoot) {
+            throw "pyenv-win archive did not contain an extracted directory."
+        }
+
+        Move-Item -LiteralPath $sourceRoot.FullName -Destination $CloneRoot -Force
+    }
+    finally {
+        Remove-Item -LiteralPath $archivePath -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $extractRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Ensure-PyenvWinInstalled {
     param([switch]$Apply)
 
@@ -143,7 +171,7 @@ function Ensure-PyenvWinInstalled {
         else {
             if (Test-Path -LiteralPath (Join-Path $cloneRoot '.git') -PathType Container) {
                 Write-LogInfo "Updating pyenv-win checkout in $cloneRoot..."
-                Invoke-GitExternalCommand -Arguments @('-C', $cloneRoot, 'pull', '--ff-only')
+                Update-PyenvWinGitCheckout -CloneRoot $cloneRoot
             }
             else {
                 $parentDir = Split-Path -Parent $cloneRoot
@@ -158,14 +186,19 @@ function Ensure-PyenvWinInstalled {
                     }
                 }
 
-                Write-LogInfo "Installing pyenv-win from the official git repository..."
-                Invoke-GitExternalCommand -Arguments @('clone', 'https://github.com/pyenv-win/pyenv-win.git', $cloneRoot)
+                if (Get-Command git -ErrorAction SilentlyContinue) {
+                    Write-LogInfo "Installing pyenv-win from the official git repository..."
+                    Invoke-GitExternalCommand -Arguments @('clone', 'https://github.com/pyenv-win/pyenv-win.git', $cloneRoot)
+                }
+                else {
+                    Install-PyenvWinFromArchive -CloneRoot $cloneRoot
+                }
             }
         }
     }
     elseif ($Apply -and (Test-Path -LiteralPath (Join-Path $cloneRoot '.git') -PathType Container)) {
         Write-LogInfo "Refreshing pyenv-win checkout in $cloneRoot..."
-        Invoke-GitExternalCommand -Arguments @('-C', $cloneRoot, 'pull', '--ff-only')
+        Update-PyenvWinGitCheckout -CloneRoot $cloneRoot
     }
 
     $pyenvHome = $pyenvRoot.TrimEnd('\') + '\'
@@ -178,206 +211,101 @@ function Ensure-PyenvWinInstalled {
     Update-Path
 }
 
-function Get-ResolvedExecutablePath {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Path,
-        [ValidateSet('Leaf', 'Container')]
-        [string]$PathType = 'Leaf'
-    )
-
-    $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
-    if (($PathType -eq 'Leaf') -and $item.PSIsContainer) {
-        throw "Expected a file path but found a directory: $Path"
-    }
-
-    if (($PathType -eq 'Container') -and -not $item.PSIsContainer) {
-        throw "Expected a directory path but found a file: $Path"
-    }
-
-    if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -and $item.Target) {
-        foreach ($target in @($item.Target)) {
-            if ([string]::IsNullOrWhiteSpace($target)) {
-                continue
-            }
-
-            $candidate = if ([System.IO.Path]::IsPathRooted($target)) {
-                $target
-            }
-            else {
-                Join-Path (Split-Path -Parent $item.FullName) $target
-            }
-
-            if (Test-Path -LiteralPath $candidate -PathType $PathType) {
-                return $candidate
-            }
-        }
-    }
-
-    if ($item.PSObject.Properties.Name -contains 'ResolvedTarget' -and $item.ResolvedTarget) {
-        if ($item.ResolvedTarget -is [System.Array]) {
-            foreach ($target in $item.ResolvedTarget) {
-                if ($target -and (Test-Path -LiteralPath $target -PathType $PathType)) {
-                    return $target
-                }
-            }
-        }
-        elseif (Test-Path -LiteralPath $item.ResolvedTarget -PathType $PathType) {
-            return $item.ResolvedTarget
-        }
-    }
-
-    if (Test-Path -LiteralPath $item.FullName -PathType $PathType) {
-        return $item.FullName
-    }
-
-    throw "Unable to resolve a valid $PathType path for $Path"
-}
-
-function Get-FnmManagedCommandLeaf {
-    param(
-        [Parameter(Mandatory = $true)]
-        [ValidateSet('node', 'npm', 'npx', 'corepack')]
-        [string]$CommandName
-    )
-
-    switch ($CommandName) {
-        'node' { return 'node.exe' }
-        'npm' { return 'npm.cmd' }
-        'npx' { return 'npx.cmd' }
-        'corepack' { return 'corepack.cmd' }
-    }
-}
-
-function Get-FnmDefaultInstallationPath {
-    $aliasRoot = Get-FnmDefaultAliasRoot
-    if (-not (Test-Path -LiteralPath $aliasRoot -PathType Container)) {
-        throw "fnm default alias is missing at $aliasRoot"
-    }
-
-    return (Get-ResolvedExecutablePath -Path $aliasRoot -PathType Container)
-}
-
-function Get-FnmManagedCommandPath {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$InstallationPath,
-        [Parameter(Mandatory = $true)]
-        [ValidateSet('node', 'npm', 'npx', 'corepack')]
-        [string]$CommandName
-    )
-
-    $targetPath = Join-Path $InstallationPath (Get-FnmManagedCommandLeaf -CommandName $CommandName)
-    if (-not (Test-Path -LiteralPath $targetPath -PathType Leaf)) {
-        throw "Unable to resolve fnm-managed $CommandName target at $targetPath"
-    }
-
-    return $targetPath
-}
-
-function Update-FnmExecutableWrapper {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$FnmPath,
-        [switch]$Apply
-    )
+function Remove-ObsoleteRuntimeWrappers {
+    param([switch]$Apply)
 
     $shimRoot = Get-UserShimRoot
-    if (-not (Test-Path $shimRoot -PathType Container)) {
-        New-Item -Path $shimRoot -ItemType Directory -Force | Out-Null
-    }
-
-    $resolvedFnmPath = Get-ResolvedExecutablePath -Path $FnmPath
-    $quotedFnmPath = '"' + $resolvedFnmPath + '"'
-    $cmdWrapperPath = Join-Path $shimRoot 'fnm.cmd'
-    $cmdWrapper = @"
-@echo off
-setlocal
-$quotedFnmPath %*
-set "exitCode=%ERRORLEVEL%"
-endlocal & exit /b %exitCode%
-"@
-
-    $ps1WrapperPath = Join-Path $shimRoot 'fnm.ps1'
-    $ps1Wrapper = @"
-& $quotedFnmPath @args
-exit `$LASTEXITCODE
-"@
-
-    $posixWrapperPath = Join-Path $shimRoot 'fnm'
-    $posixWrapper = @"
-#!/usr/bin/env sh
-exec $quotedFnmPath "`$@"
-"@
-
-    if ($Apply) {
-        $cmdUpdated = Set-CommandWrapperContent -Path $cmdWrapperPath -Content $cmdWrapper
-        $ps1Updated = Set-CommandWrapperContent -Path $ps1WrapperPath -Content $ps1Wrapper
-        $posixUpdated = Set-PosixCommandWrapperContent -Path $posixWrapperPath -Content $posixWrapper
-        if ($cmdUpdated -or $ps1Updated -or $posixUpdated) {
-            Write-LogInfo "Updated fnm wrapper in $shimRoot"
-        }
-        else {
-            Write-LogSkip "fnm wrapper is already current."
-        }
-    }
-    else {
-        Write-LogDryRun "Would register fnm wrappers in $shimRoot"
-    }
-}
-
-function Update-FnmCommandWrappers {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string[]]$Commands,
-        [Parameter(Mandatory = $true)]
-        [string]$InstallationPath,
-        [switch]$Apply
+    $obsoleteWrapperNames = @(
+        'fnm.cmd', 'fnm.ps1', 'fnm',
+        'node.cmd', 'node.ps1', 'node',
+        'npm.cmd', 'npm.ps1', 'npm',
+        'npx.cmd', 'npx.ps1', 'npx',
+        'corepack.cmd', 'corepack.ps1', 'corepack',
+        'python.cmd', 'python.ps1', 'python',
+        'python3.cmd', 'python3.ps1', 'python3',
+        'pip.cmd', 'pip.ps1', 'pip',
+        'pip3.cmd', 'pip3.ps1', 'pip3'
     )
 
-    $shimRoot = Get-UserShimRoot
-    if (-not (Test-Path $shimRoot -PathType Container)) {
-        New-Item -Path $shimRoot -ItemType Directory -Force | Out-Null
-    }
+    foreach ($wrapperName in $obsoleteWrapperNames) {
+        $wrapperPath = Join-Path $shimRoot $wrapperName
+        if (-not (Test-Path -LiteralPath $wrapperPath -PathType Leaf)) {
+            continue
+        }
 
-    foreach ($command in $Commands) {
-        $targetPath = Get-FnmManagedCommandPath -InstallationPath $InstallationPath -CommandName $command
-        $quotedTargetPath = '"' + $targetPath + '"'
-        $cmdWrapperPath = Join-Path $shimRoot ("{0}.cmd" -f $command)
-        $cmdWrapper = @"
-@echo off
-setlocal
-$quotedTargetPath %*
-set "exitCode=%ERRORLEVEL%"
-endlocal & exit /b %exitCode%
-"@
-
-        $posixWrapperPath = Join-Path $shimRoot $command
-        $posixWrapper = @"
-#!/usr/bin/env sh
-exec $quotedTargetPath "`$@"
-"@
+        if (-not (Test-IsObsoleteRuntimeWrapper -Path $wrapperPath)) {
+            Write-LogSkip "Leaving non-dotfiles runtime wrapper in place: $wrapperPath"
+            continue
+        }
 
         if ($Apply) {
-            $cmdUpdated = Set-CommandWrapperContent -Path $cmdWrapperPath -Content $cmdWrapper
-            $posixUpdated = Set-PosixCommandWrapperContent -Path $posixWrapperPath -Content $posixWrapper
-            $ps1WrapperPath = Join-Path $shimRoot ("{0}.ps1" -f $command)
-            $removedPs1Wrapper = $false
-            if (Test-Path $ps1WrapperPath -PathType Leaf) {
-                Remove-Item -LiteralPath $ps1WrapperPath -Force
-                $removedPs1Wrapper = $true
-            }
-
-            if ($cmdUpdated -or $posixUpdated -or $removedPs1Wrapper) {
-                Write-LogInfo "Updated fnm wrapper for $command in $shimRoot"
-            }
-            else {
-                Write-LogSkip "fnm wrapper for $command is already current."
-            }
+            Remove-Item -LiteralPath $wrapperPath -Force
+            Write-LogInfo "Removed obsolete runtime wrapper $wrapperPath"
         }
         else {
-            Write-LogDryRun "Would register fnm wrappers for $command in $shimRoot"
+            Write-LogDryRun "Would remove obsolete runtime wrapper $wrapperPath"
         }
+    }
+}
+
+function Test-IsObsoleteRuntimeWrapper {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    try {
+        $content = Get-Content -LiteralPath $Path -Raw -ErrorAction Stop
+    }
+    catch {
+        return $false
+    }
+
+    if ([string]::IsNullOrWhiteSpace($content)) {
+        return $false
+    }
+
+    $normalized = $content -replace "`r`n", "`n"
+    $targetsManagedRuntime = (
+        $normalized -like '*\AppData\Roaming\fnm\*' -or
+        $normalized -like '*\fnm.exe*' -or
+        $normalized -like '*\.pyenv\pyenv-win\shims\*' -or
+        $normalized -like '*\.pyenv\pyenv-win\versions\*'
+    )
+    if (-not $targetsManagedRuntime) {
+        return $false
+    }
+
+    $isLegacyCmdWrapper = (
+        $normalized -match '(?ms)^@echo off\nsetlocal\n".+"\s+%\*\nset "exitCode=%ERRORLEVEL%"\nendlocal & exit /b %exitCode%\n?$'
+    )
+    $isLegacyPsWrapper = (
+        $normalized -match '(?ms)^& ".+"\s+@args\nexit \$LASTEXITCODE\n?$'
+    )
+    $isLegacyShWrapper = (
+        $normalized -match '(?ms)^#!/usr/bin/env sh\nexec ".+"\s+"\$@"\n?$'
+    )
+
+    return ($isLegacyCmdWrapper -or $isLegacyPsWrapper -or $isLegacyShWrapper)
+}
+
+function Register-FnmDefaultRuntimePath {
+    param([switch]$Apply)
+
+    $fnmRoot = Get-FnmRoot
+    $defaultAliasRoot = Get-FnmDefaultAliasRoot
+
+    if ($Apply) {
+        Set-UserEnvironmentVariableIfNeeded -Name 'FNM_DIR' -Value $fnmRoot
+        if (-not (Test-Path -LiteralPath $defaultAliasRoot -PathType Container)) {
+            throw "fnm default alias is missing at $defaultAliasRoot"
+        }
+
+        [void](Add-PathEntry -Entry $defaultAliasRoot -Scope User)
+    }
+    else {
+        Write-LogDryRun "Would persist FNM_DIR=$fnmRoot"
+        Write-LogDryRun "Would register fnm default alias path in user PATH: $defaultAliasRoot"
     }
 }
 
@@ -385,6 +313,12 @@ function Set-NodeRuntimeState {
     param([switch]$Apply)
 
     $runtimePolicy = (Get-RuntimePolicy).node
+    $fnmRoot = Get-FnmRoot
+    $env:FNM_DIR = $fnmRoot
+    if ($Apply) {
+        Set-UserEnvironmentVariableIfNeeded -Name 'FNM_DIR' -Value $fnmRoot
+    }
+
     if (-not (Get-Command fnm -ErrorAction SilentlyContinue)) {
         if ($Apply) {
             Write-LogWarn "fnm is not installed yet. Deferring Node.js runtime configuration until after the admin phase installs managed packages."
@@ -409,21 +343,15 @@ function Set-NodeRuntimeState {
         Write-LogDryRun "Would install/set default Node.js $($runtimePolicy.version) via fnm"
     }
 
-    $defaultInstallationPath = Get-FnmDefaultInstallationPath
-    Update-FnmExecutableWrapper -FnmPath $fnmPath -Apply:$Apply
-    Update-FnmCommandWrappers -Commands @($runtimePolicy.commands) -InstallationPath $defaultInstallationPath -Apply:$Apply
+    Remove-ObsoleteRuntimeWrappers -Apply:$Apply
+    Register-FnmDefaultRuntimePath -Apply:$Apply
 }
 
 function Set-PythonRuntimeState {
     param([switch]$Apply)
 
     $runtimePolicy = (Get-RuntimePolicy).python
-    if (-not (Get-Command pyenv -ErrorAction SilentlyContinue)) {
-        if ($Apply -and -not (Get-Command git -ErrorAction SilentlyContinue)) {
-            Write-LogWarn "Git is not installed yet. Deferring Python runtime configuration until after the admin phase installs managed packages."
-            return
-        }
-
+    if ($Apply -or -not (Get-Command pyenv -ErrorAction SilentlyContinue)) {
         Ensure-PyenvWinInstalled -Apply:$Apply
     }
 
@@ -441,11 +369,11 @@ function Set-PythonRuntimeState {
     }
 
     $installedVersions = Get-TrimmedLines -InputObject (& $pyenvPath versions --bare 2>$null)
-    $selectedVersion = Get-HighestVersionMatch -Candidates $installedVersions -MajorMinor $runtimePolicy.majorMinor
+    $availableVersions = Get-TrimmedLines -InputObject (& $pyenvPath install --list 2>$null)
+    $selectedVersion = Get-HighestVersionMatch -Candidates $availableVersions -MajorMinor $runtimePolicy.majorMinor
 
     if (-not $selectedVersion) {
-        $availableVersions = Get-TrimmedLines -InputObject (& $pyenvPath install --list 2>$null)
-        $selectedVersion = Get-HighestVersionMatch -Candidates $availableVersions -MajorMinor $runtimePolicy.majorMinor
+        $selectedVersion = Get-HighestVersionMatch -Candidates $installedVersions -MajorMinor $runtimePolicy.majorMinor
     }
 
     if (-not $selectedVersion) {
@@ -467,6 +395,7 @@ function Set-PythonRuntimeState {
 
         Write-LogInfo "Setting pyenv-win global Python to $selectedVersion..."
         Invoke-ExternalCommand -FilePath $pyenvPath -Arguments @('global', $selectedVersion)
+        Invoke-ExternalCommand -FilePath $pyenvPath -Arguments @('rehash')
         [void](Add-PathEntry -Entry $pyenvBin -Scope User)
         [void](Add-PathEntry -Entry $pyenvShims -Scope User)
     }

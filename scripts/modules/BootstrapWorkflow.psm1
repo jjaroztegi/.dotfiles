@@ -22,7 +22,7 @@ function Invoke-UserSetupPhase {
     }
 
     Install-PackageManagers
-    Write-LogInfo "Managed package installation is deferred to the admin phase on Windows."
+    Install-DevTools -Scope User -ExcludePackageKeys @('pyenv-win')
     Invoke-ManagedRuntimeMaintenance
 
     Write-LogInfo "Nerd Font installation is deferred to the admin phase on Windows."
@@ -56,7 +56,7 @@ function Invoke-AdminSetupPhase {
     }
 
     Install-PackageManagers
-    Install-DevTools -Scope All -ExcludePackageKeys @($excludedPackageKeys)
+    Install-DevTools -Scope Machine -ExcludePackageKeys @($excludedPackageKeys)
     Install-NerdFonts
 
     Write-LogInfo "`n--- Deploying Protected Dotfiles ---"

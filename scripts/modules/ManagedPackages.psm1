@@ -618,6 +618,36 @@ function Invoke-ManualPackageInstall {
                 Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
             }
         }
+        'fnm' {
+            $installRoot = Join-Path $env:LOCALAPPDATA 'Programs\fnm'
+            $zipPath = Join-Path $env:TEMP 'fnm-windows.zip'
+
+            try {
+                Write-LogInfo "Installing $($Package.name) via official release archive..."
+                Invoke-WebRequest -Uri 'https://github.com/Schniz/fnm/releases/latest/download/fnm-windows.zip' -OutFile $zipPath
+                if (Test-Path $installRoot) {
+                    Remove-Item $installRoot -Recurse -Force
+                }
+
+                New-Item -Path $installRoot -ItemType Directory -Force | Out-Null
+                Expand-Archive -Path $zipPath -DestinationPath $installRoot -Force
+                $targetPath = Join-Path $installRoot 'fnm.exe'
+                if (-not (Test-Path $targetPath -PathType Leaf)) {
+                    throw "Expected executable was not found at '$targetPath'."
+                }
+
+                [void](Add-PathEntry -Entry $installRoot -Scope User)
+                Update-Path
+                return 0
+            }
+            catch {
+                Write-LogWarn "Manual install failed for $($Package.name): $($_.Exception.Message)"
+                return 1
+            }
+            finally {
+                Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
+            }
+        }
     }
 
     return $null

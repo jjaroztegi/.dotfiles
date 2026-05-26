@@ -52,6 +52,23 @@
       "managed": true
     },
     {
+      "key": "git",
+      "name": "Git",
+      "commands": ["git"],
+      "preferredManager": "winget",
+      "fallbackManagers": ["choco"],
+      "wingetId": "Git.Git",
+      "chocoId": "git",
+      "scoopId": null,
+      "scope": "user",
+      "supportsPreferredDrivePlacement": false,
+      "preferredDriveRootType": null,
+      "supportsUserScopeInstall": true,
+      "manualPostInstallPathRegistration": false,
+      "retainedException": false,
+      "managed": true
+    },
+    {
       "key": "neovim",
       "name": "Neovim",
       "commands": ["nvim"],

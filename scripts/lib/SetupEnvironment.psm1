@@ -146,7 +146,7 @@ function Test-IsStalePathEntry {
 
     $stalePatterns = @(
         '*\AppData\Local\Microsoft\WinGet\Packages\*',
-        '*\AppData\Roaming\fnm\aliases\default',
+        '*\AppData\Roaming\fnm\multishells\*',
         '*\ProgramData\chocolatey\lib\*'
     )
 
@@ -164,9 +164,10 @@ function Get-PreferredPathEntries {
 
     if ($Scope -eq 'User') {
         $entries = @(
-            (Join-Path $env:USERPROFILE ".local\bin"),
             (Join-Path $env:USERPROFILE ".pyenv\pyenv-win\shims"),
             (Join-Path $env:USERPROFILE ".pyenv\pyenv-win\bin"),
+            (Join-Path $env:APPDATA "fnm\aliases\default"),
+            (Join-Path $env:USERPROFILE ".local\bin"),
             (Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Links"),
             (Join-Path $env:LOCALAPPDATA "Microsoft\WindowsApps")
         )
@@ -283,14 +284,6 @@ function Repair-PathScope {
         }
 
         if (Test-IsStalePathEntry -Entry $normalized) {
-            continue
-        }
-
-        if (
-            ($Scope -eq 'User') -and
-            $env:APPDATA -and
-            ($normalized -ieq (Join-Path $env:APPDATA "fnm\aliases\default"))
-        ) {
             continue
         }
 
