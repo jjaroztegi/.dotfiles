@@ -1,8 +1,7 @@
 ### PowerShell Profile based on https://github.com/ChrisTitusTech/powershell-profile
 
-# Opt-out of telemetry before doing anything, only if PowerShell is run as admin
-if ($null -eq $env:POWERSHELL_TELEMETRY_OPTOUT -and [bool]([System.Security.Principal.WindowsIdentity]::GetCurrent()).IsSystem) {
-    [System.Environment]::SetEnvironmentVariable('POWERSHELL_TELEMETRY_OPTOUT', 'true', [System.EnvironmentVariableTarget]::Machine)
+if ($null -eq $env:POWERSHELL_TELEMETRY_OPTOUT) {
+    $env:POWERSHELL_TELEMETRY_OPTOUT = 'true'
 }
 
 function Update-Profile {
@@ -209,95 +208,9 @@ function Test-CanUsePredictionListView {
     }
 }
 
-function Resolve-ExistingPathForNativeTool {
-    param(
-        [string]$Path,
-        [ValidateSet('Any', 'Leaf', 'Container')]
-        [string]$PathType = 'Any'
-    )
-
-    if ([string]::IsNullOrWhiteSpace($Path)) {
-        return $null
-    }
-
-    try {
-        $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
-    }
-    catch {
-        return $null
-    }
-
-    if ($PathType -eq 'Leaf' -and $item.PSIsContainer) {
-        return $null
-    }
-
-    if ($PathType -eq 'Container' -and -not $item.PSIsContainer) {
-        return $null
-    }
-
-    if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -and $item.Target) {
-        foreach ($target in @($item.Target)) {
-            if ([string]::IsNullOrWhiteSpace($target)) {
-                continue
-            }
-
-            $candidate = if ([System.IO.Path]::IsPathRooted($target)) {
-                $target
-            }
-            else {
-                Join-Path (Split-Path -Parent $item.FullName) $target
-            }
-
-            if (Test-Path -LiteralPath $candidate -PathType $PathType -ErrorAction SilentlyContinue) {
-                return $candidate
-            }
-        }
-    }
-
-    return $item.FullName
-}
-
-function Initialize-HomeAndGitEnvironment {
-    $homeCandidates = @(
-        $env:HOME,
-        [Environment]::GetEnvironmentVariable('HOME', 'User'),
-        $env:USERPROFILE,
-        [Environment]::GetFolderPath('UserProfile'),
-        ('{0}{1}' -f $env:HOMEDRIVE, $env:HOMEPATH)
-    ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
-
-    foreach ($candidate in $homeCandidates) {
-        $resolvedHome = Resolve-ExistingPathForNativeTool -Path $candidate -PathType Container
-        if ($resolvedHome) {
-            $env:HOME = $resolvedHome
-            break
-        }
-    }
-
-    if ([string]::IsNullOrWhiteSpace($env:USERPROFILE) -and -not [string]::IsNullOrWhiteSpace($env:HOME)) {
-        $env:USERPROFILE = $env:HOME
-    }
-
-    $gitConfigCandidates = @(
-        $env:GIT_CONFIG_GLOBAL,
-        $(if ($env:HOME) { Join-Path $env:HOME '.gitconfig' }),
-        $(if ($env:USERPROFILE) { Join-Path $env:USERPROFILE '.gitconfig' })
-    ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
-
-    foreach ($candidate in $gitConfigCandidates) {
-        $resolvedGitConfig = Resolve-ExistingPathForNativeTool -Path $candidate -PathType Leaf
-        if ($resolvedGitConfig) {
-            $env:GIT_CONFIG_GLOBAL = $resolvedGitConfig
-            break
-        }
-    }
-}
-
 if ($script:IsDesktopProfile) {
     $Host.UI.RawUI.WindowTitle = "PowerShell {0}$adminSuffix" -f $PSVersionTable.PSVersion.ToString()
 }
-
-Initialize-HomeAndGitEnvironment
 
 $ChocolateyProfile = "$env:ChocolateyInstall\helpers\chocolateyProfile.psm1"
 $script:ChocolateyProfileLoaded = $false
@@ -325,187 +238,24 @@ function refreshenv {
     Update-SessionEnvironment @args
 }
 
-function Resolve-ManagedExecutable {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$CommandName,
-        [Parameter(Mandatory = $true)]
-        [string]$ExecutableLeaf,
-        [string[]]$AdditionalCandidates = @(),
-        [string]$ScoopCurrentPath,
-        [string]$WinGetPackagePattern,
-        [switch]$AllowWinGetLink
-    )
-
-    $candidates = [System.Collections.Generic.List[string]]::new()
+function Get-NativeExecutablePath {
+    param([Parameter(Mandatory = $true)][string]$CommandName)
 
     $command = Get-Command $CommandName -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($command) {
-        $commandSource = if ($command.Source) { $command.Source } elseif ($command.Path) { $command.Path } else { $null }
-        if (
-            $commandSource -and
-            $commandSource -notlike '*\Microsoft\WindowsApps\*' -and
-            ($AllowWinGetLink -or $commandSource -notlike '*\Microsoft\WinGet\Links\*')
-        ) {
-            $candidates.Add($commandSource)
-        }
-    }
-
-    foreach ($candidate in $AdditionalCandidates) {
-        if (-not [string]::IsNullOrWhiteSpace($candidate)) {
-            $candidates.Add($candidate)
-        }
-    }
-
-    if (-not [string]::IsNullOrWhiteSpace($ScoopCurrentPath)) {
-        $candidates.Add($ScoopCurrentPath)
-    }
-
-    if (-not [string]::IsNullOrWhiteSpace($WinGetPackagePattern)) {
-        $wingetPackagesRoot = Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Packages'
-        if (Test-Path $wingetPackagesRoot -PathType Container) {
-            $packagePath = Get-ChildItem -Path $wingetPackagesRoot -Directory -ErrorAction SilentlyContinue |
-                Where-Object { $_.Name -like $WinGetPackagePattern } |
-                Sort-Object Name -Descending |
-                Select-Object -First 1
-
-            if ($packagePath) {
-                $candidates.Add((Join-Path $packagePath.FullName $ExecutableLeaf))
-            }
-        }
-    }
-
-    if ($AllowWinGetLink -and -not $script:IsSshSession) {
-        $candidates.Add((Join-Path $env:LOCALAPPDATA ("Microsoft\WinGet\Links\{0}" -f $ExecutableLeaf)))
-    }
-
-    foreach ($candidate in $candidates | Select-Object -Unique) {
-        $resolvedPath = Resolve-ExistingPathForNativeTool -Path $candidate -PathType Leaf
-        if ($resolvedPath) {
-            return $resolvedPath
-        }
-    }
-
-    return $null
-}
-
-function Get-OhMyPoshExecutable {
-    return Resolve-ManagedExecutable -CommandName 'oh-my-posh' -ExecutableLeaf 'oh-my-posh.exe' -AdditionalCandidates @(
-        (Join-Path $env:LOCALAPPDATA 'Programs\oh-my-posh\bin\oh-my-posh.exe'),
-        (Join-Path $env:ProgramFiles 'oh-my-posh\bin\oh-my-posh.exe')
-    ) -ScoopCurrentPath (Join-Path $env:USERPROFILE 'scoop\apps\oh-my-posh\current\bin\oh-my-posh.exe')
-}
-
-function Get-ZoxideExecutable {
-    return Resolve-ManagedExecutable -CommandName 'zoxide' -ExecutableLeaf 'zoxide.exe' -ScoopCurrentPath (Join-Path $env:USERPROFILE 'scoop\apps\zoxide\current\zoxide.exe') -WinGetPackagePattern 'ajeetdsouza.zoxide_*' -AllowWinGetLink
-}
-
-function Get-FzfExecutable {
-    return Resolve-ManagedExecutable -CommandName 'fzf' -ExecutableLeaf 'fzf.exe' -AdditionalCandidates @(
-        $(if ($env:ChocolateyInstall) { Join-Path $env:ChocolateyInstall 'bin\fzf.exe' })
-    ) -ScoopCurrentPath (Join-Path $env:USERPROFILE 'scoop\apps\fzf\current\fzf.exe') -WinGetPackagePattern 'junegunn.fzf_*' -AllowWinGetLink
-}
-
-function Set-ZoxideCommandWrapper {
-    param([string]$FilePath)
-
-    if ([string]::IsNullOrWhiteSpace($FilePath)) {
-        return
-    }
-
-    $script:ZoxideExecutable = $FilePath
-
-    function global:zoxide {
-        if (-not $script:ZoxideExecutable) {
-            Write-Error "zoxide executable is not configured."
-            return
-        }
-
-        & $script:ZoxideExecutable @args
-    }
-}
-
-function Add-NativeToolDirectoryToPath {
-    param([string]$FilePath)
-
-    if ([string]::IsNullOrWhiteSpace($FilePath)) {
-        return
-    }
-
-    $toolDirectory = Split-Path -Parent $FilePath
-    if ([string]::IsNullOrWhiteSpace($toolDirectory) -or -not (Test-Path $toolDirectory -PathType Container)) {
-        return
-    }
-
-    $pathEntries = @($env:PATH -split ';') | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
-    $normalizedDirectory = $toolDirectory.TrimEnd('\')
-    $alreadyPresent = $pathEntries | Where-Object { $_.TrimEnd('\') -ieq $normalizedDirectory } | Select-Object -First 1
-    if ($alreadyPresent) {
-        return
-    }
-
-    $env:PATH = "$toolDirectory;$env:PATH"
-}
-
-function Sync-OhMyPoshExecutable {
-    param(
-        [int]$RefreshHours = 12
-    )
-
-    $targetPath = Join-Path $env:LOCALAPPDATA 'Programs\oh-my-posh\bin\oh-my-posh.exe'
-    $targetDir = Split-Path -Parent $targetPath
-    $packageStampPath = Join-Path $targetDir 'oh-my-posh.package.txt'
-
-    if ((Test-Path $targetPath -PathType Leaf) -and (Test-Path $packageStampPath -PathType Leaf)) {
-        $lastCheck = (Get-Item $packageStampPath -ErrorAction SilentlyContinue).LastWriteTime
-        if ($lastCheck -and $lastCheck -gt (Get-Date).AddHours(-$RefreshHours)) {
-            return $targetPath
-        }
-    }
-
-    $appxRegistryKey = Get-ChildItem 'HKCU:\Software\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\Repository\Packages' -ErrorAction SilentlyContinue |
-        Where-Object PSChildName -like 'ohmyposh.cli_*' |
-        Select-Object -First 1
-
-    if (-not $appxRegistryKey) {
+    if (-not $command) {
         return $null
     }
 
-    $packageRoot = (Get-ItemProperty $appxRegistryKey.PSPath -ErrorAction SilentlyContinue).PackageRootFolder
-    if (-not $packageRoot) {
-        return $null
+    if ($command.Source) {
+        return $command.Source
     }
 
-    $sourcePath = Join-Path $packageRoot 'oh-my-posh.exe'
-    if (-not (Test-Path $sourcePath -PathType Leaf)) {
-        return $null
-    }
-
-    if (-not (Test-Path $targetDir -PathType Container)) {
-        New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
-    }
-
-    $packageStamp = $appxRegistryKey.PSChildName
-    $currentStamp = if (Test-Path $packageStampPath -PathType Leaf) {
-        Get-Content $packageStampPath -Raw -ErrorAction SilentlyContinue
-    }
-
-    $shouldCopy = (-not (Test-Path $targetPath -PathType Leaf)) -or ($currentStamp -ne $packageStamp)
-    if (-not $shouldCopy) {
-        return $targetPath
-    }
-
-    if ($shouldCopy) {
-        & robocopy $packageRoot $targetDir 'oh-my-posh.exe' /R:1 /W:1 /NFL /NDL /NJH /NJS /NC /NS | Out-Null
-        if ($LASTEXITCODE -ge 8 -or -not (Test-Path $targetPath -PathType Leaf)) {
-            return $null
-        }
-
-        Set-Content -Path $packageStampPath -Value $packageStamp -Encoding ASCII
-    }
-
-    return $targetPath
+    return $command.Path
 }
+
+function Get-OhMyPoshExecutable { Get-NativeExecutablePath -CommandName 'oh-my-posh' }
+function Get-ZoxideExecutable { Get-NativeExecutablePath -CommandName 'zoxide' }
+function Get-FzfExecutable { Get-NativeExecutablePath -CommandName 'fzf' }
 
 # POSIX-like timing wrapper
 function time {
@@ -556,7 +306,8 @@ function pubip { Get-PubIP }
 
 # Open WinUtil
 function winutil {
-    Invoke-Expression (Invoke-RestMethod https://christitus.com/win)
+    $script = Invoke-RestMethod https://christitus.com/win
+    . ([scriptblock]::Create($script))
 }
 
 # System Utilities
@@ -852,6 +603,8 @@ function Initialize-NativeArgumentCompleters {
     # Custom completion for common commands
     $scriptblock = {
         param($wordToComplete, $commandAst, $cursorPosition)
+        $null = $cursorPosition
+
         $customCompletions = @{
             'git'  = @('status', 'add', 'commit', 'push', 'pull', 'clone', 'checkout', 'switch', 'merge', 'rebase', 'tag', 'log', 'reflog', 'reset', 'revert', 'stash', 'fetch', 'remote', 'config', 'init', 'help')
             'npm'  = @('install', 'start', 'run', 'test', 'build')
@@ -871,6 +624,8 @@ function Initialize-NativeArgumentCompleters {
     if (Get-Command dotnet -CommandType Application -ErrorAction SilentlyContinue) {
         $scriptblock = {
             param($wordToComplete, $commandAst, $cursorPosition)
+            $null = $wordToComplete
+
             dotnet complete --position $cursorPosition $commandAst.ToString() |
                 ForEach-Object {
                     [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_)
@@ -881,16 +636,6 @@ function Initialize-NativeArgumentCompleters {
 }
 
 function Initialize-OhMyPosh {
-    # Set Theme
-    if ($script:IsDesktopProfile) {
-        try {
-            $null = Sync-OhMyPoshExecutable
-        }
-        catch {
-            Write-Verbose "Skipping oh-my-posh sync: $_"
-        }
-    }
-
     $ohMyPoshPath = Get-OhMyPoshExecutable
     if ($ohMyPoshPath) {
         $themePath = Join-Path (Split-Path -Parent $PROFILE) "oh-my-posh_cobalt2.omp.json"
@@ -902,8 +647,8 @@ function Initialize-OhMyPosh {
         }
 
         try {
-            & $ohMyPoshPath init pwsh --config $themeConfig | Invoke-Expression
-            $global:_ompExecutable = $ohMyPoshPath
+            $initScript = & $ohMyPoshPath init pwsh --config $themeConfig | Out-String
+            . ([scriptblock]::Create($initScript))
         }
         catch {
             Write-Verbose "Skipping oh-my-posh initialization: $_"
@@ -915,7 +660,6 @@ function Initialize-Zoxide {
     # Set up zoxide
     $zoxidePath = Get-ZoxideExecutable
     if ($zoxidePath) {
-        Set-ZoxideCommandWrapper -FilePath $zoxidePath
         $zoxideCache = Join-Path $env:TEMP "zoxide_cache.ps1"
         if (-not (Test-Path $zoxideCache)) {
             & $zoxidePath init --cmd cd powershell | Out-String | Out-File $zoxideCache -Encoding utf8
@@ -940,8 +684,6 @@ function Initialize-PSFzf {
     if (-not $fzfPath) {
         return
     }
-
-    Add-NativeToolDirectoryToPath -FilePath $fzfPath
 
     if (Get-Module -Name PSFzf -ListAvailable) {
         try {

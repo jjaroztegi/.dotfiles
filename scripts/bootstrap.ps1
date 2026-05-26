@@ -320,7 +320,7 @@ if ($PSVersionTable.PSVersion.Major -lt 7) {
 
 try {
     Write-LogInfo "Starting Setup..."
-    Start-DotfilesBootstrap -Phase $Phase -ScriptPath $PSCommandPath -PreferredDrive $PreferredDrive -OriginalUserProfile $OriginalUserProfile -OriginalAppData $OriginalAppData -OriginalLocalAppData $OriginalLocalAppData -LogPath $LogPath -AdminManifestOnly:$AdminManifestOnly
+    Start-DotfilesBootstrap -Phase $Phase -ScriptPath $PSCommandPath -PreferredDrive $PreferredDrive -OriginalUserProfile $OriginalUserProfile -OriginalAppData $OriginalAppData -OriginalLocalAppData $OriginalLocalAppData -LogPath $LogPath
 }
 catch {
     Write-LogError "Setup failed: $_"

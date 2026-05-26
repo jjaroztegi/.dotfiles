@@ -74,8 +74,7 @@ function Start-AdminElevationRequest {
         [string]$OriginalUserProfile,
         [string]$OriginalAppData,
         [string]$OriginalLocalAppData,
-        [string]$LogPath,
-        [switch]$AdminManifestOnly
+        [string]$LogPath
     )
 
     Write-LogWarn "Running as standard user. System installations require admin privileges."
@@ -124,8 +123,7 @@ function Start-DotfilesBootstrap {
         [string]$OriginalUserProfile,
         [string]$OriginalAppData,
         [string]$OriginalLocalAppData,
-        [string]$LogPath,
-        [switch]$AdminManifestOnly
+        [string]$LogPath
     )
 
     if ($PreferredDrive) {
@@ -156,7 +154,7 @@ function Start-DotfilesBootstrap {
         }
         'Admin' {
             if (-not $isAdmin) {
-                if (Start-AdminElevationRequest -ScriptPath $ScriptPath -PreferredDrive $PreferredDrive -OriginalUserProfile $OriginalUserProfile -OriginalAppData $OriginalAppData -OriginalLocalAppData $OriginalLocalAppData -LogPath $LogPath -AdminManifestOnly:$AdminManifestOnly) {
+                if (Start-AdminElevationRequest -ScriptPath $ScriptPath -PreferredDrive $PreferredDrive -OriginalUserProfile $OriginalUserProfile -OriginalAppData $OriginalAppData -OriginalLocalAppData $OriginalLocalAppData -LogPath $LogPath) {
                     return
                 }
 
@@ -174,7 +172,7 @@ function Start-DotfilesBootstrap {
                 Invoke-AdminSetupPhase -ScriptsRoot $scriptsRoot
             }
             else {
-                $elevationStarted = Start-AdminElevationRequest -ScriptPath $ScriptPath -PreferredDrive $PreferredDrive -OriginalUserProfile $env:USERPROFILE -OriginalAppData $env:APPDATA -OriginalLocalAppData $env:LOCALAPPDATA -LogPath $LogPath -AdminManifestOnly:$AdminManifestOnly
+                $elevationStarted = Start-AdminElevationRequest -ScriptPath $ScriptPath -PreferredDrive $PreferredDrive -OriginalUserProfile $env:USERPROFILE -OriginalAppData $env:APPDATA -OriginalLocalAppData $env:LOCALAPPDATA -LogPath $LogPath
                 if ($elevationStarted) {
                     return
                 }
