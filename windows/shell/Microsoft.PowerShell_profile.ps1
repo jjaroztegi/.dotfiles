@@ -124,12 +124,23 @@ function Test-IsInteractiveTerminal {
         return $false
     }
 
+    if (Test-IsTerminalMultiplexerSession) {
+        return $true
+    }
+
     try {
         return (-not [Console]::IsInputRedirected) -and (-not [Console]::IsOutputRedirected)
     }
     catch {
         return $false
     }
+}
+
+function Test-IsTerminalMultiplexerSession {
+    return (
+        -not [string]::IsNullOrWhiteSpace($env:TMUX) -or
+        -not [string]::IsNullOrWhiteSpace($env:TMUX_PANE)
+    )
 }
 
 function Test-IsSshSession {
@@ -142,6 +153,15 @@ function Test-IsSshSession {
 
 function Test-SupportsVirtualTerminal {
     if (-not (Test-IsInteractiveTerminal)) {
+        return $false
+    }
+
+    try {
+        if ([Console]::IsOutputRedirected) {
+            return $false
+        }
+    }
+    catch {
         return $false
     }
 

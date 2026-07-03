@@ -18,6 +18,23 @@
       "managed": true
     },
     {
+      "key": "psmux",
+      "name": "psmux",
+      "commands": ["psmux", "pmux", "tmux"],
+      "preferredManager": "winget",
+      "fallbackManagers": [],
+      "wingetId": "marlocarlo.psmux",
+      "chocoId": null,
+      "scoopId": null,
+      "scope": "user",
+      "supportsPreferredDrivePlacement": false,
+      "preferredDriveRootType": null,
+      "supportsUserScopeInstall": true,
+      "manualPostInstallPathRegistration": false,
+      "retainedException": false,
+      "managed": true
+    },
+    {
       "key": "powershell",
       "name": "PowerShell 7",
       "commands": ["pwsh"],
