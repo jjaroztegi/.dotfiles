@@ -81,10 +81,18 @@ source_path|operation|destination_path
 
 Edit the manifests, shared config in `common/`, and OS-specific files in `windows/`, `macos/`, or `linux/`.
 
-To refresh runtime shims on Windows:
+Windows runtime command resolution is configured through persistent User environment variables and PATH entries, not through PowerShell profile startup side effects. See [`docs/windows-runtime-environment.md`](docs/windows-runtime-environment.md).
+
+To apply the runtime policy on Windows:
 
 ```powershell
 .\scripts\ensure-runtime-tooling.ps1 -Execute
+```
+
+To validate runtime command resolution across normal PowerShell, no-profile PowerShell, and Git/Husky-like launchers:
+
+```powershell
+pwsh -ExecutionPolicy Bypass -File .\scripts\validate-runtime-environment.ps1
 ```
 
 ## Repository Structure
