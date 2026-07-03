@@ -63,6 +63,34 @@
     "{hexdiff}:/**/*.*": "hexEditor.hexedit",
     "*.pdf": "latex-workshop-pdf-hook",
   },
+  "files.watcherExclude": {
+    "**/.git/objects/**": true,
+    "**/.git/subtree-cache/**": true,
+    "**/.hg/store/**": true,
+    "**/node_modules/**": true,
+    "**/.pnpm-store/**": true,
+    "**/.yarn/cache/**": true,
+    "**/.next/**": true,
+    "**/.nuxt/**": true,
+    "**/.turbo/**": true,
+    "**/.cache/**": true,
+    "**/dist/**": true,
+    "**/build/**": true,
+    "**/coverage/**": true,
+  },
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/.pnpm-store": true,
+    "**/.yarn/cache": true,
+    "**/.next": true,
+    "**/.nuxt": true,
+    "**/.turbo": true,
+    "**/.cache": true,
+    "**/dist": true,
+    "**/build": true,
+    "**/coverage": true,
+  },
+  "search.followSymlinks": false,
   // ===== Terminal =====
   "terminal.integrated.fontFamily": "'Iosevka Nerd Font Mono', monospace",
   "terminal.integrated.fontSize": 15,
@@ -72,7 +100,7 @@
   "terminal.integrated.gpuAcceleration": "on",
 
   // ===== Git =====
-  "git.autofetch": "all",
+  "git.autofetch": false,
   "git.confirmSync": false,
   "git.openRepositoryInParentFolders": "always",
 
@@ -166,28 +194,31 @@
   "makefile.configureOnOpen": true,
   "latex-workshop.formatting.latex": "latexindent",
   "github.copilot.enable": {
-    "*": true,
+    "*": false,
     "plaintext": false,
     "scminput": false,
     "cpp": false,
     "c": false,
   },
-  "github.copilot.nextEditSuggestions.enabled": true,
-  "chat.agent.enabled": true,
-  "chat.mcp.gallery.enabled": true,
-  "chat.tools.urls.autoApprove": {
-    "https://nextjs.org": {
-      "approveRequest": false,
-      "approveResponse": true,
-    },
-  },
-  "chat.viewSessions.orientation": "stacked",
+  "github.copilot.nextEditSuggestions.enabled": false,
+  "github.copilot.nextEditSuggestions.extendedRange": false,
+  "github.copilot.nextEditSuggestions.fixes": false,
+  "github.copilot.editor.enableCodeActions": false,
+  "github.copilot.renameSuggestions.triggerAutomatically": false,
+  "github.copilot.chat.backgroundAgent.enabled": false,
+  "github.copilot.chat.cloudAgent.enabled": false,
+  "github.copilot.chat.claudeAgent.enabled": false,
+  "github.copilot.chat.reviewAgent.enabled": false,
+  "github.copilot.chat.reviewSelection.enabled": false,
+  "github.copilot.chat.newWorkspaceCreation.enabled": false,
+  "github.copilot.chat.workspace.enableCodeSearch": false,
+  "github.copilot.chat.workspace.codeSearchExternalIngest.enabled": false,
+  "chat.agent.enabled": false,
+  "chat.mcp.gallery.enabled": false,
   "remote.SSH.remotePlatform": {
     "m4tr1x": "linux",
     "libreelec": "linux",
   },
-  "gitlens.ai.model": "vscode",
-  "gitlens.ai.vscode.model": "copilot:claude-sonnet-4.6",
   "settingsSync.ignoredExtensions": [
     "jjaroztegi.vscode-altitude-script-language",
     "ms-vscode-remote.remote-wsl",
@@ -198,7 +229,6 @@
   "telemetry.telemetryLevel": "off",
   "MATLAB.telemetry": false,
   "redhat.telemetry.enabled": false,
-  "gitlens.telemetry.enabled": false,
 
   // ===== Performance =====
   "extensions.experimental.affinity": {
@@ -452,28 +482,8 @@
       "commands": ["workbench.view.scm"],
     },
     {
-      "before": ["<leader>", "g", "b"],
-      "commands": ["gitlens.toggleFileBlame"],
-    },
-    {
-      "before": ["<leader>", "g", "B"],
-      "commands": ["gitlens.openFileOnRemote"],
-    },
-    {
       "before": ["<leader>", "g", "d"],
       "commands": ["git.openChange"],
-    },
-    {
-      "before": ["<leader>", "g", "l"],
-      "commands": ["gitlens.showQuickFileHistory"],
-    },
-    {
-      "before": ["<leader>", "g", "L"],
-      "commands": ["gitlens.showQuickRepoHistory"],
-    },
-    {
-      "before": ["<leader>", "g", "c"],
-      "commands": ["gitlens.showQuickCommitDetails"],
     },
     {
       "before": ["<leader>", "w", "d"],
@@ -556,5 +566,20 @@
   // ===== Other Settings =====
   "altitudeScriptLanguage.compiler.enabled": true,
   "altitudeScriptLanguage.compiler.installRoot": "D:\\Program Files (x86)\\Altitude\\Altitude uCI 8\\Altitude Script Developer\\bin",
-  "altitudeScriptLanguage.compiler.runOnType": true
+  "altitudeScriptLanguage.compiler.runOnType": true,
+  "json.schemaDownload.trustedDomains": {
+    "https://developer.microsoft.com/json-schemas/": true,
+    "https://json-schema.org/": true,
+    "https://json.schemastore.org/": true,
+    "https://models.dev": true,
+    "https://openapi.vercel.sh": true,
+    "https://opencode.ai": true,
+    "https://raw.githubusercontent.com/devcontainers/spec/": true,
+    "https://raw.githubusercontent.com/microsoft/vscode/": true,
+    "https://schemastore.azurewebsites.net/": true,
+    "https://www.schemastore.org/": true
+  },
+  "[latex]": {
+    "editor.defaultFormatter": "James-Yu.latex-workshop"
+  }
 }
