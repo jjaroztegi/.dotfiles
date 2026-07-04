@@ -718,6 +718,51 @@ function Initialize-PSFzf {
     }
 }
 
+function Start-SshPsmuxSession {
+    if (-not $script:IsSshSession) {
+        return $false
+    }
+
+    if (Test-IsTerminalMultiplexerSession) {
+        return $false
+    }
+
+    $autoAttachMode = "$env:PSMUX_SSH_AUTO_ATTACH".Trim().ToLowerInvariant()
+    if ($autoAttachMode -in @('0', 'false', 'no', 'off', 'disabled')) {
+        return $false
+    }
+
+    $psmuxPath = Get-NativeExecutablePath -CommandName 'psmux'
+    if (-not $psmuxPath) {
+        return $false
+    }
+
+    $sessionName = if (-not [string]::IsNullOrWhiteSpace($env:PSMUX_SSH_SESSION)) {
+        $env:PSMUX_SSH_SESSION
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($env:PSMUX_DEFAULT_SESSION)) {
+        $env:PSMUX_DEFAULT_SESSION
+    }
+    else {
+        'ssh'
+    }
+
+    & $psmuxPath has-session -t $sessionName 2>$null
+    if ($LASTEXITCODE -eq 0) {
+        & $psmuxPath attach-session -t $sessionName
+    }
+    else {
+        & $psmuxPath new-session -s $sessionName
+    }
+
+    $exitCode = $LASTEXITCODE
+    if ($null -ne $exitCode) {
+        exit $exitCode
+    }
+
+    exit
+}
+
 function Initialize-InteractiveShell {
     Initialize-PSReadLine
     Initialize-NativeArgumentCompleters
@@ -727,6 +772,7 @@ function Initialize-InteractiveShell {
 }
 
 if ($script:IsInteractiveProfile) {
+    Start-SshPsmuxSession | Out-Null
     Initialize-InteractiveShell
 }
 
