@@ -187,14 +187,14 @@ function Get-PreferredPathEntries {
     param([ValidateSet('User', 'Machine')][string]$Scope)
 
     if ($Scope -eq 'User') {
-        # Order matters: the global venv must shadow uv's python trampolines in .local\bin, and
-        # npm/pnpm global bins follow the fnm default alias.
+        # Order matters: the global venv must shadow uv's python trampolines in .local\bin, and the
+        # npm prefix (npm, corepack, pnpm/yarn shims) must shadow the copies bundled with Node.
         $layout = Get-DevToolchainLayout
         $entries = @(
             $layout.UvToolBin,
             (Join-Path $layout.PythonVenv "Scripts"),
-            $layout.FnmDefaultAlias,
             $layout.NpmPrefix,
+            $layout.FnmDefaultAlias,
             $layout.PnpmBin,
             (Join-Path $env:USERPROFILE ".local\bin"),
             (Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Links"),
@@ -226,6 +226,24 @@ function Get-PreferredPathEntries {
     }
 
     return @($machineEntries | Where-Object { $_ })
+}
+
+function Get-GitUsrBinPath {
+    $git = Get-Command git -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $git) {
+        return $null
+    }
+
+    $dir = Split-Path -Parent $git.Source
+    while ($dir) {
+        $candidate = Join-Path $dir 'usr\bin'
+        if (Test-Path -LiteralPath (Join-Path $candidate 'grep.exe') -PathType Leaf) {
+            return $candidate
+        }
+        $dir = Split-Path -Parent $dir
+    }
+
+    return $null
 }
 
 function Set-ScopedEnvironmentVariable {
@@ -295,6 +313,12 @@ function Repair-PathScope {
         }
     }
 
+    # Git's usr\bin (grep, sed, awk, ...) goes last so Machine PATH and every other entry win.
+    $trailingEntry = if ($Scope -eq 'User') { Format-PathEntryText -Entry (Get-GitUsrBinPath) } else { $null }
+    if ($trailingEntry) {
+        [void]$seen.Add($trailingEntry)
+    }
+
     foreach ($preferred in Get-PreferredPathEntries -Scope $Scope) {
         $normalizedPreferred = Format-PathEntryText -Entry $preferred
         if (-not $normalizedPreferred) {
@@ -323,6 +347,10 @@ function Repair-PathScope {
         if ($seen.Add($normalized)) {
             $normalizedEntries.Add($normalized)
         }
+    }
+
+    if ($trailingEntry -and -not $inheritedSet.Contains($trailingEntry)) {
+        $normalizedEntries.Add($trailingEntry)
     }
 
     Set-PathEntries -Scope $Scope -Entries $normalizedEntries

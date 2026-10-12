@@ -12,11 +12,11 @@ $ErrorActionPreference = 'Stop'
 
 Import-Module (Join-Path $PSScriptRoot 'lib\SetupEnvironment.psm1') -Force
 
-$commandsToProbe = @('node', 'npm', 'npx', 'python', 'pip')
+$commandsToProbe = @('node', 'npm', 'npx', 'corepack', 'pnpm', 'yarn', 'python', 'pip')
 
 $probeScript = @'
 $ErrorActionPreference = "Continue"
-$commandsToProbe = @("node", "npm", "npx", "python", "pip")
+$commandsToProbe = @("node", "npm", "npx", "corepack", "pnpm", "yarn", "python", "pip")
 
 function Get-VersionArguments {
     param([string]$Name)
@@ -207,7 +207,9 @@ function Invoke-GitShDirectContext {
     )
 
     $shellProbe = @'
-for command_name in node npm npx python pip; do
+# Login profiles define interactive aliases (node='winpty node.exe') that hooks never expand.
+unalias -a 2>/dev/null
+for command_name in node npm npx corepack pnpm yarn python pip; do
   command_path="$(command -v "$command_name" 2>/dev/null || true)"
   if [ -n "$command_path" ] && command -v cygpath >/dev/null 2>&1; then
     command_path="$(cygpath -w "$command_path" 2>/dev/null || printf '%s' "$command_path")"
@@ -341,8 +343,8 @@ $userShimRoot = Join-Path $env:USERPROFILE '.local\bin'
 $expectedPathEntries = @(
     $layout.UvToolBin,
     $venvScripts,
-    $layout.FnmDefaultAlias,
     $layout.NpmPrefix,
+    $layout.FnmDefaultAlias,
     $layout.PnpmBin,
     (Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Links'),
     (Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps')
@@ -354,23 +356,23 @@ foreach ($entry in $expectedPathEntries) {
     }
 }
 
-$venvIndex = Get-PathEntryIndex -PathValue $userPath -ExpectedEntry $venvScripts
-$shimIndex = Get-PathEntryIndex -PathValue $userPath -ExpectedEntry $userShimRoot
-if ($venvIndex -ge 0 -and $shimIndex -ge 0 -and $venvIndex -gt $shimIndex) {
-    $failures.Add("persistent User PATH has '$userShimRoot' before the global venv '$venvScripts'.") | Out-Null
-}
-
-$fnmAliasIndex = Get-PathEntryIndex -PathValue $userPath -ExpectedEntry $layout.FnmDefaultAlias
-$npmPrefixIndex = Get-PathEntryIndex -PathValue $userPath -ExpectedEntry $layout.NpmPrefix
-if ($fnmAliasIndex -ge 0 -and $npmPrefixIndex -ne $fnmAliasIndex + 1) {
-    $failures.Add("persistent User PATH does not have '$($layout.NpmPrefix)' immediately after '$($layout.FnmDefaultAlias)'.") | Out-Null
-}
-
-if ($layout.PnpmBin) {
-    $pnpmBinIndex = Get-PathEntryIndex -PathValue $userPath -ExpectedEntry $layout.PnpmBin
-    if ($pnpmBinIndex -ge 0 -and $pnpmBinIndex -lt $npmPrefixIndex) {
-        $failures.Add("persistent User PATH has '$($layout.PnpmBin)' before '$($layout.NpmPrefix)'.") | Out-Null
+# Relative order of the runtime entries present on the User PATH.
+$orderedEntries = @($layout.UvToolBin, $venvScripts, $layout.NpmPrefix, $layout.FnmDefaultAlias, $layout.PnpmBin, $userShimRoot) | Where-Object { $_ }
+$previousEntry = $null
+$previousIndex = -1
+foreach ($entry in $orderedEntries) {
+    $index = Get-PathEntryIndex -PathValue $userPath -ExpectedEntry $entry
+    if ($index -lt 0) {
+        continue
     }
+
+    if ($index -lt $previousIndex) {
+        $failures.Add("persistent User PATH has '$entry' before '$previousEntry'.") | Out-Null
+        continue
+    }
+
+    $previousEntry = $entry
+    $previousIndex = $index
 }
 
 foreach ($entry in @($userPath -split ';') + @($machinePath -split ';')) {
@@ -401,9 +403,21 @@ elseif ((Normalize-CommandPath -Path $npmPrefix) -ine (Normalize-CommandPath -Pa
     $failures.Add("npm prefix is '$npmPrefix', expected '$($layout.NpmPrefix)'.") | Out-Null
 }
 
-foreach ($row in @($records | Where-Object { $_.command -eq 'python' -and $_.kind -eq 'local' -and $_.path })) {
-    if ((Normalize-CommandPath -Path $row.path) -ine (Normalize-CommandPath -Path (Join-Path $venvScripts 'python.exe'))) {
-        $failures.Add("$($row.context): python resolved to '$($row.path)', expected the global venv '$venvScripts'.") | Out-Null
+# npm/corepack and their shims must come from the npm prefix, not the copies bundled with Node.
+$expectedCommandDirs = @{
+    node     = $layout.FnmDefaultAlias
+    npm      = $layout.NpmPrefix
+    npx      = $layout.NpmPrefix
+    corepack = $layout.NpmPrefix
+    pnpm     = $layout.NpmPrefix
+    yarn     = $layout.NpmPrefix
+    python   = $venvScripts
+    pip      = $venvScripts
+}
+foreach ($row in @($records | Where-Object { $_.kind -eq 'local' -and $_.path -and $expectedCommandDirs.ContainsKey($_.command) })) {
+    $expectedDir = $expectedCommandDirs[$row.command]
+    if ((Normalize-CommandPath -Path (Split-Path -Parent $row.path)) -ine (Normalize-CommandPath -Path $expectedDir)) {
+        $failures.Add("$($row.context): $($row.command) resolved to '$($row.path)', expected it from '$expectedDir'.") | Out-Null
     }
 }
 

@@ -102,6 +102,7 @@ function Set-DevDirectoryEnvironment {
         UV_TOOL_BIN_DIR          = $layout.UvToolBin
         PIP_CACHE_DIR            = Join-Path $cache 'pip'
         PLAYWRIGHT_BROWSERS_PATH = Join-Path $cache 'ms-playwright'
+        BUN_INSTALL_CACHE_DIR    = Join-Path $cache 'bun'
         NUGET_PACKAGES           = Join-Path $cache 'nuget\packages'
         GOCACHE                  = Join-Path $cache 'go-build'
         GOPATH                   = "$drive\developer\go"
@@ -217,7 +218,8 @@ function Register-FnmDefaultRuntimePath {
 function Set-NpmGlobalConfig {
     param([switch]$Apply)
 
-    # Version-independent prefix: npm's default prefix is the active Node install directory.
+    # Version-independent prefix: npm's default prefix is the active Node install directory, so
+    # npm upgrades and global packages would be lost on every Node version change.
     $layout = Get-DevToolchainLayout
     $npm = Join-Path $layout.FnmDefaultAlias 'npm.cmd'
     $settings = [ordered]@{ prefix = $layout.NpmPrefix }
@@ -234,22 +236,28 @@ function Set-NpmGlobalConfig {
         Invoke-ExternalCommand -FilePath $npm -Arguments @('config', 'set', $key, $settings[$key], '--location=user')
     }
 
-    if ($Apply) {
-        New-Item -Path $layout.NpmPrefix -ItemType Directory -Force | Out-Null
+    if (-not $Apply) {
+        Write-LogDryRun "Would run: npm install -g npm@latest corepack@latest"
+        return
     }
+
+    New-Item -Path $layout.NpmPrefix -ItemType Directory -Force | Out-Null
+    Write-LogInfo "Installing npm and corepack into $($layout.NpmPrefix)..."
+    Invoke-ExternalCommand -FilePath $npm -Arguments @('install', '-g', 'npm@latest', 'corepack@latest')
 }
 
 function Set-PnpmGlobalConfig {
     param([switch]$Apply)
 
     $layout = Get-DevToolchainLayout
-    $corepack = Join-Path $layout.FnmDefaultAlias 'corepack.cmd'
+    $corepack = Join-Path $layout.NpmPrefix 'corepack.cmd'
+    $corepackArguments = @('enable', '--install-directory', $layout.NpmPrefix, 'pnpm', 'yarn')
     if ($Apply) {
-        Write-LogInfo "Enabling pnpm via corepack..."
-        Invoke-ExternalCommand -FilePath $corepack -Arguments @('enable', 'pnpm')
+        Write-LogInfo "Enabling pnpm and yarn via corepack..."
+        Invoke-ExternalCommand -FilePath $corepack -Arguments $corepackArguments
     }
     else {
-        Write-LogDryRun "Would run: corepack enable pnpm"
+        Write-LogDryRun "Would run: corepack $($corepackArguments -join ' ')"
     }
 
     if (-not $layout.PreferredDrive) {
@@ -331,6 +339,13 @@ function Set-PythonRuntimeState {
     $majorMinor = $layout.PythonMajorMinor
     $venvPython = Join-Path $layout.PythonVenv 'Scripts\python.exe'
 
+    if ($Apply) {
+        Set-UserEnvironmentVariableIfNeeded -Name 'PYTHONUTF8' -Value '1'
+    }
+    else {
+        Write-LogDryRun "Would persist PYTHONUTF8=1"
+    }
+
     if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
         if ($Apply) {
             Write-LogWarn "uv is not installed yet. Deferring Python runtime configuration until uv is installed."
@@ -397,7 +412,7 @@ function Set-ProfileJunctions {
     param([switch]$Apply)
 
     # Directory junctions for tools without a relocation setting. T3 Code resolves realpath, so its
-    # worktree and scratch roots can live on the preferred drive.
+    # scratch root can live on the preferred drive.
     $layout = Get-DevToolchainLayout
     if (-not $layout.PreferredDrive) {
         return
@@ -405,8 +420,37 @@ function Set-ProfileJunctions {
 
     $developerRoot = "$($layout.PreferredDrive)\developer"
     Set-ProfileJunction -Path (Join-Path $env:USERPROFILE '.cache') -Target (Join-Path $layout.CacheRoot 'home') -Apply:$Apply
-    Set-ProfileJunction -Path (Join-Path $env:USERPROFILE '.t3\worktrees') -Target (Join-Path $developerRoot '.t3\worktrees') -Apply:$Apply
     Set-ProfileJunction -Path (Join-Path $env:USERPROFILE '.t3\scratch') -Target (Join-Path $developerRoot '.t3\scratch') -Apply:$Apply
+}
+
+function Set-T3WorktreesDirectory {
+    param([switch]$Apply)
+
+    $layout = Get-DevToolchainLayout
+    if (-not $layout.PreferredDrive) {
+        return
+    }
+
+    $settingsPath = Join-Path $env:USERPROFILE '.t3\userdata\settings.json'
+    if (-not (Test-Path -LiteralPath $settingsPath -PathType Leaf)) {
+        Write-LogSkip "T3 Code settings not found at $settingsPath. Skipping worktreesDirectory."
+        return
+    }
+
+    $settings = Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-Json
+    if ($settings.PSObject.Properties.Name -contains 'worktreesDirectory') {
+        return
+    }
+
+    $worktreesDirectory = "$($layout.PreferredDrive)\worktrees"
+    if (-not $Apply) {
+        Write-LogDryRun "Would set T3 Code worktreesDirectory=$worktreesDirectory in $settingsPath"
+        return
+    }
+
+    $settings | Add-Member -NotePropertyName 'worktreesDirectory' -NotePropertyValue $worktreesDirectory
+    [System.IO.File]::WriteAllText($settingsPath, ($settings | ConvertTo-Json -Depth 100))
+    Write-LogInfo "Set T3 Code worktreesDirectory=$worktreesDirectory"
 }
 
 function Invoke-RuntimeToolingSetup {
@@ -418,6 +462,7 @@ function Invoke-RuntimeToolingSetup {
     Set-NodeRuntimeState -Apply:$Execute
     Set-PythonRuntimeState -Apply:$Execute
     Set-ProfileJunctions -Apply:$Execute
+    Set-T3WorktreesDirectory -Apply:$Execute
 
     if ($Execute) {
         Update-StandardPaths -IsAdmin (Test-IsAdmin) | Out-Null
