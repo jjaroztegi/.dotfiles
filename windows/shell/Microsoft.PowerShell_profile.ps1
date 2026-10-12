@@ -99,6 +99,8 @@ function Clear-Cache {
     [CmdletBinding(SupportsShouldProcess)]
     param(
         # Only files untouched for this long are removed, so running tools and agents keep their working files.
+        # A negative value would put the cutoff in the future and delete everything.
+        [ValidateRange(0, 3650)]
         [int]$OlderThanDays = 7,
         # Also prune npm, pnpm and uv caches down to what is still referenced.
         [switch]$DevCaches
