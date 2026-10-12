@@ -22,7 +22,7 @@ function Invoke-UserSetupPhase {
     }
 
     Install-PackageManagers
-    Install-DevTools -Scope User -ExcludePackageKeys @('pyenv-win')
+    Install-DevTools -Scope User
     Invoke-ManagedRuntimeMaintenance
 
     Write-LogInfo "Nerd Font installation is deferred to the admin phase on Windows."
@@ -48,7 +48,6 @@ function Invoke-AdminSetupPhase {
     }
 
     $excludedPackageKeys = [System.Collections.Generic.List[string]]::new()
-    $excludedPackageKeys.Add('pyenv-win') | Out-Null
     if (-not (Test-InteractiveSession)) {
         Write-LogWarn "Ghostscript and MSYS2 installation are skipped in non-interactive admin sessions because their installers can hang."
         $excludedPackageKeys.Add('ghostscript') | Out-Null
