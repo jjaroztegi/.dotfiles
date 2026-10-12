@@ -96,20 +96,64 @@ function Update-PowerShell {
 }
 
 function Clear-Cache {
-    Write-Host "Clearing cache..." -ForegroundColor Cyan
-    # Clear Windows Prefetch
-    Write-Host "Clearing Windows Prefetch..." -ForegroundColor Yellow
-    Remove-Item -Path "$env:SystemRoot\Prefetch\*" -Force -ErrorAction SilentlyContinue
-    # Clear Windows Temp
-    Write-Host "Clearing Windows Temp..." -ForegroundColor Yellow
-    Remove-Item -Path "$env:SystemRoot\Temp\*" -Recurse -Force -ErrorAction SilentlyContinue
-    # Clear User Temp
-    Write-Host "Clearing User Temp..." -ForegroundColor Yellow
-    Remove-Item -Path "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
-    # Clear Internet Explorer Cache
-    Write-Host "Clearing Internet Explorer Cache..." -ForegroundColor Yellow
-    Remove-Item -Path "$env:LOCALAPPDATA\Microsoft\Windows\INetCache\*" -Recurse -Force -ErrorAction SilentlyContinue
-    Write-Host "Cache clearing completed." -ForegroundColor Green
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        # Only files untouched for this long are removed, so running tools and agents keep their working files.
+        [int]$OlderThanDays = 7,
+        # Also prune npm, pnpm and uv caches down to what is still referenced.
+        [switch]$DevCaches
+    )
+
+    $cutoff = (Get-Date).AddDays(-$OlderThanDays)
+    $roots = @($env:TEMP, "$env:LOCALAPPDATA\Microsoft\Windows\INetCache")
+    if ($isAdmin) { $roots += "$env:SystemRoot\Temp" } else { Write-Host "Skipping $env:SystemRoot\Temp (needs admin)." -ForegroundColor DarkGray }
+
+    foreach ($root in $roots | Select-Object -Unique) {
+        if (-not (Test-Path -LiteralPath $root)) { continue }
+
+        # Reparse points are skipped so links never lead outside the cache root.
+        $files = @(Get-ChildItem -LiteralPath $root -Recurse -Force -File -Attributes !ReparsePoint -ErrorAction SilentlyContinue |
+                Where-Object LastWriteTime -lt $cutoff)
+        $bytes = ($files | Measure-Object Length -Sum).Sum
+        if (-not $PSCmdlet.ShouldProcess($root, ("Remove {0} files ({1:N1} MB) older than {2:d}" -f $files.Count, ($bytes / 1MB), $cutoff))) { continue }
+
+        $freed = 0
+        $skipped = 0
+        foreach ($file in $files) {
+            try {
+                Remove-Item -LiteralPath $file.FullName -Force -ErrorAction Stop
+                $freed += $file.Length
+            }
+            catch {
+                # In use or access denied: leave it for the next run.
+                $skipped++
+            }
+        }
+
+        # Deepest first, so parents empty out before they are checked.
+        Get-ChildItem -LiteralPath $root -Recurse -Force -Directory -Attributes !ReparsePoint -ErrorAction SilentlyContinue |
+            Where-Object LastWriteTime -lt $cutoff |
+            Sort-Object { $_.FullName.Length } -Descending |
+            Where-Object { -not (Get-ChildItem -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue | Select-Object -First 1) } |
+            Remove-Item -Force -ErrorAction SilentlyContinue
+
+        Write-Host ("{0}: freed {1:N1} MB, skipped {2} in-use files" -f $root, ($freed / 1MB), $skipped) -ForegroundColor Green
+    }
+
+    if (-not $DevCaches) { return }
+
+    $prune = [ordered]@{
+        npm  = @('cache', 'verify')
+        pnpm = @('store', 'prune')
+        uv   = @('cache', 'prune')
+    }
+    foreach ($tool in $prune.Keys) {
+        if (-not (Get-Command $tool -CommandType Application, ExternalScript -ErrorAction SilentlyContinue)) { continue }
+        if ($PSCmdlet.ShouldProcess("$tool cache", "$tool $($prune[$tool] -join ' ')")) {
+            Write-Host "$tool $($prune[$tool] -join ' ')" -ForegroundColor Cyan
+            & $tool @($prune[$tool])
+        }
+    }
 }
 
 # Admin Check and Prompt Customization
@@ -313,7 +357,16 @@ function Edit-Profile {
 }
 Set-Alias -Name ep -Value Edit-Profile
 
-function touch($file) { "" | Out-File $file -Encoding ASCII }
+function touch {
+    param([Parameter(Mandatory)][string]$File)
+
+    if (Test-Path -LiteralPath $File) {
+        (Get-Item -LiteralPath $File).LastWriteTime = Get-Date
+    }
+    else {
+        New-Item -Path $File -ItemType File -Force | Out-Null
+    }
+}
 function ff($name) {
     Get-ChildItem -recurse -filter "*${name}*" -ErrorAction SilentlyContinue | ForEach-Object {
         Write-Output "$($_.FullName)"
@@ -321,13 +374,12 @@ function ff($name) {
 }
 
 # Network Utilities
-function Get-PubIP { (Invoke-WebRequest http://ifconfig.me/ip).Content }
+function Get-PubIP { (Invoke-RestMethod https://ifconfig.me/ip).Trim() }
 function pubip { Get-PubIP }
 
 # Open WinUtil
 function winutil {
-    $script = Invoke-RestMethod https://christitus.com/win
-    . ([scriptblock]::Create($script))
+    & ([scriptblock]::Create((Invoke-RestMethod https://christitus.com/win))) @args
 }
 
 # System Utilities
@@ -352,47 +404,22 @@ function uptime {
 }
 
 function Invoke-Profile {
-    & $PROFILE
+    . $PROFILE
 }
 
-function unzip ($file) {
-    Write-Output("Extracting", $file, "to", $pwd)
-    $fullFile = Get-ChildItem -Path $pwd -Filter $file | ForEach-Object { $_.FullName }
-    Expand-Archive -Path $fullFile -DestinationPath $pwd
-}
+function unzip {
+    param([Parameter(Mandatory)][string]$File)
 
-function hb {
-    if ($args.Length -eq 0) {
-        Write-Error "No file path specified."
+    if (-not (Test-Path -LiteralPath $File -PathType Leaf)) {
+        Write-Error "File not found: $File"
         return
     }
-    $FilePath = $args[0]
-    if (Test-Path $FilePath) {
-        $Content = Get-Content $FilePath -Raw
-    }
-    else {
-        Write-Error "File path does not exist."
-        return
-    }
-    $uri = "http://bin.christitus.com/documents"
-    try {
-        $response = Invoke-RestMethod -Uri $uri -Method Post -Body $Content -ErrorAction Stop
-        $hasteKey = $response.key
-        $url = "http://bin.christitus.com/$hasteKey"
-        if ($script:IsDesktopProfile) {
-            Set-Clipboard $url
-        }
-        Write-Output $url
-    }
-    catch {
-        Write-Error "Failed to upload the document. Error: $_"
-    }
+
+    Expand-Archive -LiteralPath $File -DestinationPath (Get-Location) -Force
 }
 
 function df { Get-Volume }
-function sed($file, $find, $replace) {
-    (Get-Content $file).replace("$find", $replace) | Set-Content $file
-}
+
 function which($name) {
     Get-Command $name | Select-Object -ExpandProperty Definition
 }
@@ -400,18 +427,10 @@ function export($name, $value) {
     set-item -force -path "env:$name" -value $value;
 }
 function pkill($name) {
-    Get-Process $name -ErrorAction SilentlyContinue | Stop-Process
+    Get-Process $name -ErrorAction SilentlyContinue | Stop-Process -Force
 }
 function pgrep($name) {
-    Get-Process $name
-}
-function head {
-    param($Path, $n = 10)
-    Get-Content $Path -Head $n
-}
-function tail {
-    param($Path, $n = 10, [switch]$f = $false)
-    Get-Content $Path -Tail $n -Wait:$f
+    Get-Process $name -ErrorAction SilentlyContinue
 }
 
 function du {
@@ -460,23 +479,28 @@ function trash($path) {
         return
     }
 
-    $fullPath = (Resolve-Path -Path $path).Path
-    if (Test-Path $fullPath) {
-        $item = Get-Item $fullPath
-        $parentPath = if ($item.PSIsContainer) { $item.Parent.FullName } else { $item.DirectoryName }
-        $shell = New-Object -ComObject 'Shell.Application'
-        $shellItem = $shell.NameSpace($parentPath).ParseName($item.Name)
-        if ($item) {
-            $shellItem.InvokeVerb('delete')
-            Write-Host "Item '$fullPath' has been moved to the Recycle Bin."
-        }
-        else {
-            Write-Host "Error: Could not find the item '$fullPath' to trash."
-        }
+    $resolved = Resolve-Path -LiteralPath $path -ErrorAction SilentlyContinue
+    if (-not $resolved) {
+        Write-Error "Item not found: $path"
+        return
     }
-    else {
-        Write-Host "Error: Item '$fullPath' does not exist."
+
+    $item = Get-Item -LiteralPath $resolved.ProviderPath
+    $parentPath = if ($item.PSIsContainer) { Split-Path -Path $item.FullName -Parent } else { $item.DirectoryName }
+    if ([string]::IsNullOrWhiteSpace($parentPath)) {
+        Write-Error "Cannot move a root path to the Recycle Bin: $($item.FullName)"
+        return
     }
+
+    $shellFolder = (New-Object -ComObject 'Shell.Application').NameSpace($parentPath)
+    $shellItem = if ($shellFolder) { $shellFolder.ParseName($item.Name) } else { $null }
+    if (-not $shellItem) {
+        Write-Error "Could not move item to the Recycle Bin: $($item.FullName)"
+        return
+    }
+
+    $shellItem.InvokeVerb('delete')
+    Write-Host "Item '$($item.FullName)' has been moved to the Recycle Bin."
 }
 
 # Navigation Shortcuts
@@ -488,10 +512,13 @@ function dtop {
     $dtop = if ([Environment]::GetFolderPath("Desktop")) { [Environment]::GetFolderPath("Desktop") } else { $HOME + "\Documents" }
     Invoke-ProfileLocationChange -Path $dtop
 }
-function dev { Invoke-ProfileLocationChange -Path 'D:\Code' }
+function dev {
+    $root = if ($env:DOTFILES_PREFERRED_DRIVE) { "$env:DOTFILES_PREFERRED_DRIVE\developer" } else { Join-Path $HOME 'developer' }
+    Invoke-ProfileLocationChange -Path $root
+}
 
 # Simplified Process Management
-function k9 { Stop-Process -Name $args[0] }
+function k9 { pkill $args[0] }
 
 # Enhanced Listing
 function la {
@@ -506,9 +533,8 @@ function ll {
 # Git Shortcuts
 function gs { git status }
 function ga { git add . }
-function gc { param($m) git commit -m "$m" }
-function gpush { git push }
-function gpull { git pull }
+function gpush { git push @args }
+function gpull { git pull @args }
 function g {
     if (Get-Command __zoxide_z -ErrorAction SilentlyContinue) {
         __zoxide_z github
@@ -517,14 +543,14 @@ function g {
 
     Write-Error "zoxide is not initialized in $($script:ProfileSessionType) profile sessions."
 }
-function gcl { git clone "$args" }
+function gcl { git clone @args }
 function gcom {
     git add .
-    git commit -m "$args"
+    git commit -m ($args -join ' ')
 }
 function lazyg {
     git add .
-    git commit -m "$args"
+    git commit -m ($args -join ' ')
     git push
 }
 
@@ -550,7 +576,7 @@ function cpy {
         return
     }
 
-    Set-Clipboard $args[0]
+    Set-Clipboard ($args -join ' ')
 }
 function pst {
     if (-not $script:IsDesktopProfile) {
@@ -611,10 +637,8 @@ function Initialize-PSReadLine {
 
     # Custom functions for PSReadLine
     Set-PSReadLineOption -AddToHistoryHandler {
-        param($line)
-        $sensitive = @('password', 'secret', 'token', 'apikey', 'connectionstring')
-        $hasSensitive = $sensitive | Where-Object { $line -match $_ }
-        return ($null -eq $hasSensitive)
+        param([string]$line)
+        $line -notmatch '(?i)(password|secret|token|apikey|connectionstring)'
     }
 
 }
@@ -681,7 +705,7 @@ function Initialize-Zoxide {
     $zoxidePath = Get-ZoxideExecutable
     if ($zoxidePath) {
         $zoxideCache = Join-Path $env:TEMP "zoxide_cache.ps1"
-        if (-not (Test-Path $zoxideCache)) {
+        if (-not (Test-Path $zoxideCache) -or (Get-Item $zoxidePath).LastWriteTime -gt (Get-Item $zoxideCache).LastWriteTime) {
             & $zoxidePath init --cmd cd powershell | Out-String | Out-File $zoxideCache -Encoding utf8
         }
         . $zoxideCache
@@ -784,35 +808,31 @@ $($PSStyle.Foreground.Yellow)=======================$($PSStyle.Reset)
 $($PSStyle.Foreground.Green)Update-PowerShell$($PSStyle.Reset) - Checks for the latest PowerShell release and updates if a new version is available.
 $($PSStyle.Foreground.Green)Update-Profile$($PSStyle.Reset) - Updates the current user's PowerShell profile from the GitHub repository.
 $($PSStyle.Foreground.Green)Edit-Profile$($PSStyle.Reset) - Opens the current user's profile for editing using the configured editor.
-$($PSStyle.Foreground.Green)Clear-Cache$($PSStyle.Reset) - Clears Windows prefetch, temp files, and browser cache.
-$($PSStyle.Foreground.Green)touch$($PSStyle.Reset) <file> - Creates a new empty file.
+$($PSStyle.Foreground.Green)Clear-Cache$($PSStyle.Reset) [-OlderThanDays 7] [-DevCaches] [-WhatIf] - Removes temp and browser cache files older than N days; -DevCaches also prunes npm/pnpm/uv caches.
+$($PSStyle.Foreground.Green)touch$($PSStyle.Reset) <file> - Creates a file or updates its timestamp.
 $($PSStyle.Foreground.Green)ff$($PSStyle.Reset) <name> - Finds files recursively with the specified name.
 $($PSStyle.Foreground.Green)Get-PubIP$($PSStyle.Reset) - Retrieves the public IP address of the machine.
 $($PSStyle.Foreground.Green)winutil$($PSStyle.Reset) - Runs the latest WinUtil full-release script from Chris Titus Tech.
 $($PSStyle.Foreground.Green)uptime$($PSStyle.Reset) - Displays the system uptime.
 $($PSStyle.Foreground.Green)Invoke-Profile$($PSStyle.Reset) - Reloads the current user's PowerShell profile.
 $($PSStyle.Foreground.Green)unzip$($PSStyle.Reset) <file> - Extracts a zip file to the current directory.
-$($PSStyle.Foreground.Green)hb$($PSStyle.Reset) <file> - Uploads the specified file's content to a hastebin-like service and returns the URL.
 $($PSStyle.Foreground.Green)df$($PSStyle.Reset) - Displays information about volumes.
-$($PSStyle.Foreground.Green)sed$($PSStyle.Reset) <file> <find> <replace> - Replaces text in a file.
 $($PSStyle.Foreground.Green)which$($PSStyle.Reset) <name> - Shows the path of the command.
 $($PSStyle.Foreground.Green)export$($PSStyle.Reset) <name> <value> - Sets an environment variable.
 $($PSStyle.Foreground.Green)pkill$($PSStyle.Reset) <name> - Kills processes by name.
 $($PSStyle.Foreground.Green)pgrep$($PSStyle.Reset) <name> - Lists processes by name.
-$($PSStyle.Foreground.Green)head$($PSStyle.Reset) <path> [n] - Displays the first n lines of a file (default 10).
-$($PSStyle.Foreground.Green)tail$($PSStyle.Reset) <path> [n] [-f] - Displays the last n lines of a file (default 10). Use -f to continuously monitor.
 $($PSStyle.Foreground.Green)du$($PSStyle.Reset) <path> - Shows disk usage of the specified path(s).
 $($PSStyle.Foreground.Green)nf$($PSStyle.Reset) <name> - Creates a new file with the specified name.
 $($PSStyle.Foreground.Green)mkcd$($PSStyle.Reset) <dir> - Creates and changes to a new directory.
 $($PSStyle.Foreground.Green)trash$($PSStyle.Reset) <path> - Moves a file or directory to the Recycle Bin instead of permanently deleting.
 $($PSStyle.Foreground.Green)docs$($PSStyle.Reset) - Changes the current directory to the user's Documents folder.
 $($PSStyle.Foreground.Green)dtop$($PSStyle.Reset) - Changes the current directory to the user's Desktop folder.
-$($PSStyle.Foreground.Green)dev$($PSStyle.Reset) - Changes the current directory to D:\Code.
+$($PSStyle.Foreground.Green)dev$($PSStyle.Reset) - Changes the current directory to the developer root (<preferred drive>\developer or ~\developer).
 $($PSStyle.Foreground.Green)ep$($PSStyle.Reset) - Alias for Edit-Profile, opens the profile for editing.
 $($PSStyle.Foreground.Green)vim$($PSStyle.Reset) - Alias for the configured editor ($EDITOR).
 $($PSStyle.Foreground.Green)k9$($PSStyle.Reset) <name> - Kills a process by name.
-$($PSStyle.Foreground.Green)la$($PSStyle.Reset) - Lists all files in the current directory with detailed formatting.
-$($PSStyle.Foreground.Green)ll$($PSStyle.Reset) - Lists all files, including hidden, in the current directory with detailed formatting.
+$($PSStyle.Foreground.Green)la$($PSStyle.Reset) - Lists all files, including hidden, in the current directory.
+$($PSStyle.Foreground.Green)ll$($PSStyle.Reset) - Lists visible files in the current directory.
 $($PSStyle.Foreground.Green)sysinfo$($PSStyle.Reset) - Displays detailed system information.
 $($PSStyle.Foreground.Green)flushdns$($PSStyle.Reset) - Clears the DNS cache.
 $($PSStyle.Foreground.Green)reboot$($PSStyle.Reset) - Alias for Restart-System, restarts the computer immediately.
