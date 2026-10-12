@@ -67,7 +67,7 @@ That alias is a junction that `fnm default` repoints, so the PATH entry stays th
 
 npm globals use a version-independent prefix, set with `npm config set prefix <path> --location=user` (`<T>\npm-global`, or `%APPDATA%\npm` without a preferred drive); with a preferred drive the cache is `<C>\npm`. The user `.npmrc` also holds auth tokens, so only `npm config set` touches it.
 
-npm and corepack themselves live in that prefix (`npm install -g npm@latest corepack@latest`), and pnpm and yarn shims are written there with `corepack enable --install-directory <prefix> pnpm yarn`. The prefix precedes the fnm alias on PATH, so a Node version change neither downgrades npm to the bundled one nor removes pnpm/yarn.
+npm and corepack themselves live in that prefix (`npm install -g npm@latest corepack@latest`), and pnpm and yarn shims are written there with `corepack enable --install-directory <prefix> pnpm yarn`, and the global pnpm is pinned to the latest release with `corepack install -g pnpm@latest` (otherwise corepack keeps whichever version it first resolved). The prefix precedes the fnm alias on PATH, so a Node version change neither downgrades npm to the bundled one nor removes pnpm/yarn.
 
 With a preferred drive, `PNPM_HOME=<T>\pnpm` and `%LOCALAPPDATA%\pnpm\config\config.yaml` (pnpm 11) gets `storeDir: <drive>\.pnpm-store`, `cacheDir: <C>\pnpm`, `globalDir: <T>\pnpm\global`, `globalBinDir: <T>\pnpm\bin`; `%LOCALAPPDATA%\pnpm\config\rc` (pnpm 10) gets `store-dir`. Existing keys in both files are merged, not replaced.
 
