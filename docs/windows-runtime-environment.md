@@ -28,12 +28,12 @@ Persistent User environment:
 - Keeps standard Windows package-manager command surfaces available for future package installs:
   - `%LOCALAPPDATA%\Microsoft\WinGet\Links`
   - `%LOCALAPPDATA%\Microsoft\WindowsApps`
-- Contains pyenv-win shims before pyenv-win bin:
-  - `%USERPROFILE%\.pyenv\pyenv-win\shims`
-  - `%USERPROFILE%\.pyenv\pyenv-win\bin`
-- Contains fnm's stable default alias directory:
-  - `%APPDATA%\fnm\aliases\default`
-- Contains general user command shims after runtime paths:
+- Contains the runtime command paths, in this order, before general user shims (`<T>` is the toolchains root, see [Developer drive layout](#developer-drive-layout)):
+  - `<T>\uv\bin` (uv tool entry points; only with a preferred drive)
+  - `<T>\python\global-<majorMinor>\Scripts` (global venv: `python`, `pip`)
+  - `<FNM_DIR>\aliases\default` (fnm's default alias junction: `node`, `npm`, `npx`, `pnpm`)
+  - npm global prefix, immediately after the fnm alias
+  - `<T>\pnpm\bin` (only with a preferred drive)
   - `%USERPROFILE%\.local\bin`
 
 PowerShell profile:
@@ -56,26 +56,52 @@ fnm is used as an installer and default-version selector. The shell hook from `f
 
 The deployed baseline is:
 
-- `FNM_DIR=%APPDATA%\fnm`
+- `FNM_DIR=<T>\fnm` (`%APPDATA%\fnm` without a preferred drive)
 - `fnm install <runtime-policy node version>`
 - `fnm default <runtime-policy node version>`
-- User PATH includes `%APPDATA%\fnm\aliases\default`
+- User PATH includes `<FNM_DIR>\aliases\default`
 
-That alias directory is stable. When the default Node version changes, the alias target changes while the PATH entry remains the same.
+That alias is a junction that `fnm default` repoints, so the PATH entry stays the same across Node versions. Never copy or recreate it as a real directory: fnm updates would stop reaching PATH and npm would write globals into it. Setup and validation fail if it is not a reparse point.
+
+npm globals use a version-independent prefix, set with `npm config set prefix <path> --location=user` (`<T>\npm-global`, or `%APPDATA%\npm` without a preferred drive); with a preferred drive the cache is `<C>\npm`. The user `.npmrc` also holds auth tokens, so only `npm config set` touches it.
+
+pnpm comes from corepack (`corepack enable pnpm`). With a preferred drive, `PNPM_HOME=<T>\pnpm` and `%LOCALAPPDATA%\pnpm\config\config.yaml` (pnpm 11) gets `storeDir: <drive>\.pnpm-store`, `cacheDir: <C>\pnpm`, `globalDir: <T>\pnpm\global`, `globalBinDir: <T>\pnpm\bin`; `%LOCALAPPDATA%\pnpm\config\rc` (pnpm 10) gets `store-dir`. Existing keys in both files are merged, not replaced.
 
 Project-local `.node-version` or `.nvmrc` switching is an interactive opt-in. It can be used in a shell that evaluates `fnm env --use-on-cd`, but hooks and automation should rely on the deployed default unless a project explicitly bootstraps its own environment.
 
 ## Python
 
-pyenv-win is used through its documented shim model:
+uv is the only Python manager:
 
-- `PYENV`, `PYENV_ROOT`, and `PYENV_HOME` point to `%USERPROFILE%\.pyenv\pyenv-win\`
-- User PATH includes `%USERPROFILE%\.pyenv\pyenv-win\shims`
-- User PATH includes `%USERPROFILE%\.pyenv\pyenv-win\bin`
-- `pyenv global <runtime-policy python version>`
-- `pyenv rehash`
+- `uv python install <runtime-policy majorMinor> --default` installs the interpreter and `python.exe` trampolines into `%USERPROFILE%\.local\bin`
+- `uv venv --seed --python <majorMinor> <T>\python\global-<majorMinor>` creates the global venv (`%LOCALAPPDATA%\python\global-<majorMinor>` without a preferred drive)
+- The venv `Scripts` dir precedes `%USERPROFILE%\.local\bin` on the User PATH, so it is the `python`/`pip` that shells, SSH, hooks, and agents get
 
-The shim directory is the public command surface for `python`, `pip`, and installed Python entry points.
+The Python Launcher (`py`, winget `Python.Launcher`) stays installed. System or Chocolatey Python installs must not be on the Machine PATH: Machine PATH comes first and would shadow the User entries.
+
+## Developer drive layout
+
+When `config/placement.json` `preferredDrive` (or `-PreferredDrive`) is set, `<T>` is `<drive>\developer\toolchains` and `<C>` is `<drive>\developer\cache`. User environment:
+
+- `UV_CACHE_DIR=<C>\uv`, `UV_PYTHON_INSTALL_DIR=<T>\uv\python`, `UV_TOOL_DIR=<T>\uv\tools`, `UV_TOOL_BIN_DIR=<T>\uv\bin`
+- `PIP_CACHE_DIR=<C>\pip`, `PLAYWRIGHT_BROWSERS_PATH=<C>\ms-playwright`, `NUGET_PACKAGES=<C>\nuget\packages`
+- `GOCACHE=<C>\go-build`, `GOPATH=<drive>\developer\go`, `GOMODCACHE=<drive>\developer\go\pkg\mod`
+- `CARGO_HOME=<T>\cargo`, `RUSTUP_HOME=<T>\rustup`
+- `TEMP` and `TMP` = `<drive>\Temp`
+
+Directory junctions cover tools without a relocation setting:
+
+- `%USERPROFILE%\.cache` -> `<C>\home`
+- `%USERPROFILE%\.t3\worktrees` -> `<drive>\developer\.t3\worktrees`
+- `%USERPROFILE%\.t3\scratch` -> `<drive>\developer\.t3\scratch`
+
+A junction is created only when the source is missing or an empty directory; otherwise setup warns and the content must be moved by hand. Use directory junctions, not file symlinks: some system services refuse file symlinks under the profile.
+
+Without a preferred drive, tool defaults are kept; the npm prefix, fnm junction, and uv-only Python rules still apply.
+
+## WSL
+
+`.wslconfig` is deployed as a copy. WSL refuses to read it through a symlink ("untrusted mount point") and silently ignores it. Move distros with `wsl --manage <distro> --move <dir>` (or by setting `BasePath`), never by symlinking `ext4.vhdx`: the distro then fails to start.
 
 ## Propagation Rules
 
@@ -95,7 +121,8 @@ References:
 - [PowerShell command-line options](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_pwsh)
 - [Windows OpenSSH server configuration](https://learn.microsoft.com/en-us/windows-server/administration/openssh/openssh-server-configuration)
 - [fnm README](https://github.com/Schniz/fnm)
-- [pyenv-win installation](https://github.com/pyenv-win/pyenv-win/blob/master/docs/installation.md)
+- [uv Python versions](https://docs.astral.sh/uv/concepts/python-versions/)
+- [pnpm settings](https://pnpm.io/settings)
 - [Git hooks](https://git-scm.com/docs/githooks)
 - [Husky startup files](https://typicode.github.io/husky/how-to.html)
 - [VS Code terminal environment notes](https://code.visualstudio.com/docs/terminal/advanced)
@@ -115,6 +142,8 @@ The script validates:
 - `pwsh -NoProfile -NonInteractive`
 - `cmd.exe` as a Husky-like launcher
 - Git `sh.exe` as a Husky-like launcher, when Git for Windows is installed
+
+It also checks that the fnm default alias is a junction, `npm config get prefix` is outside the fnm Node install, `python` resolves to the global venv, no pyenv entry is on PATH, the expected User PATH order holds, and (with a preferred drive) `pnpm store path` is on that drive.
 
 For SSH validation:
 
