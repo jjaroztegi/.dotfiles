@@ -239,7 +239,8 @@ function Deploy-Manifest {
         try {
             if ($operation -eq 'copy') {
                 if (Test-Path $destPath) {
-                    if ((Test-Path $destPath -PathType Leaf) -and (Test-Path $sourcePath -PathType Leaf)) {
+                    # A symlink left by an earlier symlink deployment hashes equal to its target; replace it with a real copy.
+                    if ((Test-Path $destPath -PathType Leaf) -and (Test-Path $sourcePath -PathType Leaf) -and -not (Get-Item $destPath -Force).LinkType) {
                         $sourceHash = (Get-FileHash $sourcePath -Algorithm MD5).Hash
                         $destHash = (Get-FileHash $destPath -Algorithm MD5).Hash
                         if ($sourceHash -eq $destHash) {

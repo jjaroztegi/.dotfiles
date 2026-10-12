@@ -1,7 +1,7 @@
 windows/apps/winfetch/config.ps1|copy|~\.config\winfetch\config.ps1
 common/.gitconfig|copy|
 common/.gitignore|copy|
-windows/shell/.wslconfig|symlink|
+windows/shell/.wslconfig|copy|
 windows/autostart/AppToggle.ahk|symlink|shell:startup
 windows/apps/msi-afterburner/MSIAfterburner.cfg|copy|$AppPath[MSI Afterburner]\Profiles\MSIAfterburner.cfg
 windows/apps/rivatuner/|copy|$AppPath[RivaTuner Statistics Server]\Profiles
