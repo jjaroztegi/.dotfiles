@@ -252,12 +252,16 @@ function Set-PnpmGlobalConfig {
     $layout = Get-DevToolchainLayout
     $corepack = Join-Path $layout.NpmPrefix 'corepack.cmd'
     $corepackArguments = @('enable', '--install-directory', $layout.NpmPrefix, 'pnpm', 'yarn')
+    # Without a global pin, corepack keeps whichever pnpm it first resolved.
+    $pnpmPinArguments = @('install', '-g', 'pnpm@latest')
     if ($Apply) {
         Write-LogInfo "Enabling pnpm and yarn via corepack..."
         Invoke-ExternalCommand -FilePath $corepack -Arguments $corepackArguments
+        Invoke-ExternalCommand -FilePath $corepack -Arguments $pnpmPinArguments
     }
     else {
         Write-LogDryRun "Would run: corepack $($corepackArguments -join ' ')"
+        Write-LogDryRun "Would run: corepack $($pnpmPinArguments -join ' ')"
     }
 
     if (-not $layout.PreferredDrive) {
