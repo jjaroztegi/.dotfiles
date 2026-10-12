@@ -44,7 +44,7 @@ Notes:
 - A standard-user run handles user-scoped setup.
 - An admin run handles machine-wide installs and deferred packages.
 - `deploy.ps1` creates symlinks when possible and falls back to copying when it cannot. `.wslconfig` is always copied: WSL ignores it when it is a symlink.
-- Node comes from fnm, pnpm from corepack, and Python from uv.
+- Node comes from fnm; npm, corepack, pnpm, and yarn from the version-independent npm prefix; Python from uv.
 
 ### macOS / Linux
 

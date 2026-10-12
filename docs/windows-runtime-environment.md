@@ -31,10 +31,12 @@ Persistent User environment:
 - Contains the runtime command paths, in this order, before general user shims (`<T>` is the toolchains root, see [Developer drive layout](#developer-drive-layout)):
   - `<T>\uv\bin` (uv tool entry points; only with a preferred drive)
   - `<T>\python\global-<majorMinor>\Scripts` (global venv: `python`, `pip`)
-  - `<FNM_DIR>\aliases\default` (fnm's default alias junction: `node`, `npm`, `npx`, `pnpm`)
-  - npm global prefix, immediately after the fnm alias
+  - npm global prefix (`npm`, `npx`, `corepack`, `pnpm`, `yarn`, npm globals)
+  - `<FNM_DIR>\aliases\default` (fnm's default alias junction: `node`)
   - `<T>\pnpm\bin` (only with a preferred drive)
   - `%USERPROFILE%\.local\bin`
+- Ends with Git for Windows' `usr\bin` (`grep`, `sed`, `awk`, `head`, `tail`, `xargs`, `which`, `diff` for agents in PowerShell). Machine PATH still wins for `find`, `sort`, `tar`, `ssh`, and `bash`.
+- Sets `PYTHONUTF8=1`.
 
 PowerShell profile:
 
@@ -65,7 +67,9 @@ That alias is a junction that `fnm default` repoints, so the PATH entry stays th
 
 npm globals use a version-independent prefix, set with `npm config set prefix <path> --location=user` (`<T>\npm-global`, or `%APPDATA%\npm` without a preferred drive); with a preferred drive the cache is `<C>\npm`. The user `.npmrc` also holds auth tokens, so only `npm config set` touches it.
 
-pnpm comes from corepack (`corepack enable pnpm`). With a preferred drive, `PNPM_HOME=<T>\pnpm` and `%LOCALAPPDATA%\pnpm\config\config.yaml` (pnpm 11) gets `storeDir: <drive>\.pnpm-store`, `cacheDir: <C>\pnpm`, `globalDir: <T>\pnpm\global`, `globalBinDir: <T>\pnpm\bin`; `%LOCALAPPDATA%\pnpm\config\rc` (pnpm 10) gets `store-dir`. Existing keys in both files are merged, not replaced.
+npm and corepack themselves live in that prefix (`npm install -g npm@latest corepack@latest`), and pnpm and yarn shims are written there with `corepack enable --install-directory <prefix> pnpm yarn`. The prefix precedes the fnm alias on PATH, so a Node version change neither downgrades npm to the bundled one nor removes pnpm/yarn.
+
+With a preferred drive, `PNPM_HOME=<T>\pnpm` and `%LOCALAPPDATA%\pnpm\config\config.yaml` (pnpm 11) gets `storeDir: <drive>\.pnpm-store`, `cacheDir: <C>\pnpm`, `globalDir: <T>\pnpm\global`, `globalBinDir: <T>\pnpm\bin`; `%LOCALAPPDATA%\pnpm\config\rc` (pnpm 10) gets `store-dir`. Existing keys in both files are merged, not replaced.
 
 Project-local `.node-version` or `.nvmrc` switching is an interactive opt-in. It can be used in a shell that evaluates `fnm env --use-on-cd`, but hooks and automation should rely on the deployed default unless a project explicitly bootstraps its own environment.
 
@@ -84,7 +88,7 @@ The Python Launcher (`py`, winget `Python.Launcher`) stays installed. System or 
 When `config/placement.json` `preferredDrive` (or `-PreferredDrive`) is set, `<T>` is `<drive>\developer\toolchains` and `<C>` is `<drive>\developer\cache`. User environment:
 
 - `UV_CACHE_DIR=<C>\uv`, `UV_PYTHON_INSTALL_DIR=<T>\uv\python`, `UV_TOOL_DIR=<T>\uv\tools`, `UV_TOOL_BIN_DIR=<T>\uv\bin`
-- `PIP_CACHE_DIR=<C>\pip`, `PLAYWRIGHT_BROWSERS_PATH=<C>\ms-playwright`, `NUGET_PACKAGES=<C>\nuget\packages`
+- `PIP_CACHE_DIR=<C>\pip`, `PLAYWRIGHT_BROWSERS_PATH=<C>\ms-playwright`, `NUGET_PACKAGES=<C>\nuget\packages`, `BUN_INSTALL_CACHE_DIR=<C>\bun`
 - `GOCACHE=<C>\go-build`, `GOPATH=<drive>\developer\go`, `GOMODCACHE=<drive>\developer\go\pkg\mod`
 - `CARGO_HOME=<T>\cargo`, `RUSTUP_HOME=<T>\rustup`
 - `TEMP` and `TMP` = `<drive>\Temp`
@@ -92,10 +96,11 @@ When `config/placement.json` `preferredDrive` (or `-PreferredDrive`) is set, `<T
 Directory junctions cover tools without a relocation setting:
 
 - `%USERPROFILE%\.cache` -> `<C>\home`
-- `%USERPROFILE%\.t3\worktrees` -> `<drive>\developer\.t3\worktrees`
 - `%USERPROFILE%\.t3\scratch` -> `<drive>\developer\.t3\scratch`
 
 A junction is created only when the source is missing or an empty directory; otherwise setup warns and the content must be moved by hand. Use directory junctions, not file symlinks: some system services refuse file symlinks under the profile.
+
+T3 Code worktrees use its own setting instead: when `%USERPROFILE%\.t3\userdata\settings.json` exists and has no `worktreesDirectory`, setup adds `"worktreesDirectory": "<drive>\\worktrees"`; other keys are preserved.
 
 Without a preferred drive, tool defaults are kept; the npm prefix, fnm junction, and uv-only Python rules still apply.
 
@@ -143,7 +148,7 @@ The script validates:
 - `cmd.exe` as a Husky-like launcher
 - Git `sh.exe` as a Husky-like launcher, when Git for Windows is installed
 
-It also checks that the fnm default alias is a junction, `npm config get prefix` is outside the fnm Node install, `python` resolves to the global venv, no pyenv entry is on PATH, the expected User PATH order holds, and (with a preferred drive) `pnpm store path` is on that drive.
+It also checks that the fnm default alias is a junction, `npm config get prefix` is outside the fnm Node install, `npm`/`npx`/`corepack`/`pnpm`/`yarn` resolve from the npm prefix, `node` from the fnm alias, `python`/`pip` from the global venv, no pyenv entry is on PATH, the expected User PATH order holds, and (with a preferred drive) `pnpm store path` is on that drive.
 
 For SSH validation:
 
