@@ -25,7 +25,7 @@ Or run the full bootstrap from a local clone:
 powershell.exe -ExecutionPolicy Bypass -File .\scripts\bootstrap.ps1
 ```
 
-Prefer another drive for placement-aware installs (overrides `preferredDrive` in `config/placement.json`):
+Prefer another drive for placement-aware installs (overrides `preferredDrive` in `config/placement.json`; persisted per machine as the `DOTFILES_PREFERRED_DRIVE` User variable):
 
 ```powershell
 powershell.exe -ExecutionPolicy Bypass -File .\scripts\bootstrap.ps1 -PreferredDrive D:

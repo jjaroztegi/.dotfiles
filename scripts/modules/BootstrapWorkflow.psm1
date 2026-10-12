@@ -128,6 +128,8 @@ function Start-DotfilesBootstrap {
     if ($PreferredDrive) {
         Set-PlacementOverride -PreferredDrive $PreferredDrive
         $env:DOTFILES_PREFERRED_DRIVE = $PreferredDrive.ToUpperInvariant()
+        # Persist per machine so later deploy/validate runs use the same layout without the flag.
+        [void](Set-ScopedEnvironmentVariable -Name 'DOTFILES_PREFERRED_DRIVE' -Value $env:DOTFILES_PREFERRED_DRIVE -Scope User)
     }
 
     $placement = Get-ManagedPlacement
