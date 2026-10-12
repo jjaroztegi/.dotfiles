@@ -10,11 +10,13 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$commandsToProbe = @('node', 'npm', 'npx', 'python', 'pip')
+Import-Module (Join-Path $PSScriptRoot 'lib\SetupEnvironment.psm1') -Force
+
+$commandsToProbe = @('node', 'npm', 'npx', 'corepack', 'pnpm', 'yarn', 'python', 'pip')
 
 $probeScript = @'
 $ErrorActionPreference = "Continue"
-$commandsToProbe = @("node", "npm", "npx", "python", "pip")
+$commandsToProbe = @("node", "npm", "npx", "corepack", "pnpm", "yarn", "python", "pip")
 
 function Get-VersionArguments {
     param([string]$Name)
@@ -205,7 +207,9 @@ function Invoke-GitShDirectContext {
     )
 
     $shellProbe = @'
-for command_name in node npm npx python pip; do
+# Login profiles define interactive aliases (node='winpty node.exe') that hooks never expand.
+unalias -a 2>/dev/null
+for command_name in node npm npx corepack pnpm yarn python pip; do
   command_path="$(command -v "$command_name" 2>/dev/null || true)"
   if [ -n "$command_path" ] && command -v cygpath >/dev/null 2>&1; then
     command_path="$(cygpath -w "$command_path" 2>/dev/null || printf '%s' "$command_path")"
@@ -331,14 +335,20 @@ if ($CompareSsh) {
 
 $failures = [System.Collections.Generic.List[string]]::new()
 
+$layout = Get-DevToolchainLayout
 $userPath = [System.Environment]::GetEnvironmentVariable('Path', 'User')
+$machinePath = [System.Environment]::GetEnvironmentVariable('Path', 'Machine')
+$venvScripts = Join-Path $layout.PythonVenv 'Scripts'
+$userShimRoot = Join-Path $env:USERPROFILE '.local\bin'
 $expectedPathEntries = @(
-    (Join-Path $env:USERPROFILE '.pyenv\pyenv-win\shims'),
-    (Join-Path $env:USERPROFILE '.pyenv\pyenv-win\bin'),
-    (Join-Path $env:APPDATA 'fnm\aliases\default'),
+    $layout.UvToolBin,
+    $venvScripts,
+    $layout.NpmPrefix,
+    $layout.FnmDefaultAlias,
+    $layout.PnpmBin,
     (Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Links'),
     (Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps')
-)
+) | Where-Object { $_ }
 
 foreach ($entry in $expectedPathEntries) {
     if ((Test-Path -LiteralPath $entry -PathType Container) -and -not (Test-PathContainsEntry -PathValue $userPath -ExpectedEntry $entry)) {
@@ -346,25 +356,75 @@ foreach ($entry in $expectedPathEntries) {
     }
 }
 
-$pyenvShims = Join-Path $env:USERPROFILE '.pyenv\pyenv-win\shims'
-$pyenvBin = Join-Path $env:USERPROFILE '.pyenv\pyenv-win\bin'
-$pyenvShimsIndex = Get-PathEntryIndex -PathValue $userPath -ExpectedEntry $pyenvShims
-$pyenvBinIndex = Get-PathEntryIndex -PathValue $userPath -ExpectedEntry $pyenvBin
-if ($pyenvShimsIndex -ge 0 -and $pyenvBinIndex -ge 0 -and $pyenvShimsIndex -gt $pyenvBinIndex) {
-    $failures.Add("persistent User PATH has pyenv-win bin before shims.") | Out-Null
+# Relative order of the runtime entries present on the User PATH.
+$orderedEntries = @($layout.UvToolBin, $venvScripts, $layout.NpmPrefix, $layout.FnmDefaultAlias, $layout.PnpmBin, $userShimRoot) | Where-Object { $_ }
+$previousEntry = $null
+$previousIndex = -1
+foreach ($entry in $orderedEntries) {
+    $index = Get-PathEntryIndex -PathValue $userPath -ExpectedEntry $entry
+    if ($index -lt 0) {
+        continue
+    }
+
+    if ($index -lt $previousIndex) {
+        $failures.Add("persistent User PATH has '$entry' before '$previousEntry'.") | Out-Null
+        continue
+    }
+
+    $previousEntry = $entry
+    $previousIndex = $index
 }
 
-$expectedFnmDir = Join-Path $env:APPDATA 'fnm'
+foreach ($entry in @($userPath -split ';') + @($machinePath -split ';')) {
+    if ($entry -like '*pyenv*') {
+        $failures.Add("PATH still contains pyenv entry '$entry'.") | Out-Null
+    }
+}
+
 $fnmDir = [System.Environment]::GetEnvironmentVariable('FNM_DIR', 'User')
-if ((Test-Path -LiteralPath $expectedFnmDir -PathType Container) -and ((Normalize-CommandPath -Path $fnmDir) -ine (Normalize-CommandPath -Path $expectedFnmDir))) {
-    $failures.Add("persistent User FNM_DIR is '$fnmDir', expected '$expectedFnmDir'.") | Out-Null
+if ((Normalize-CommandPath -Path $fnmDir) -ine (Normalize-CommandPath -Path $layout.FnmDir)) {
+    $failures.Add("persistent User FNM_DIR is '$fnmDir', expected '$($layout.FnmDir)'.") | Out-Null
 }
 
-$expectedPyenvRoot = (Join-Path $env:USERPROFILE '.pyenv\pyenv-win').TrimEnd('\') + '\'
-foreach ($name in @('PYENV', 'PYENV_ROOT', 'PYENV_HOME')) {
-    $value = [System.Environment]::GetEnvironmentVariable($name, 'User')
-    if ((Test-Path -LiteralPath $expectedPyenvRoot -PathType Container) -and ($value -cne $expectedPyenvRoot)) {
-        $failures.Add("persistent User $name is '$value', expected '$expectedPyenvRoot'.") | Out-Null
+$fnmAlias = Get-Item -LiteralPath $layout.FnmDefaultAlias -Force -ErrorAction SilentlyContinue
+if (-not $fnmAlias -or -not ($fnmAlias.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+    $failures.Add("fnm default alias '$($layout.FnmDefaultAlias)' is missing or is not a junction; run 'fnm default <version>' after removing it.") | Out-Null
+}
+
+$npmPrefix = if (Get-Command npm -ErrorAction SilentlyContinue) { @(& npm config get prefix 2>$null | Select-Object -First 1)[0] } else { $null }
+$fnmNodeVersions = Join-Path $layout.FnmDir 'node-versions'
+if ([string]::IsNullOrWhiteSpace($npmPrefix)) {
+    $failures.Add("'npm config get prefix' returned nothing.") | Out-Null
+}
+elseif ((Normalize-CommandPath -Path $npmPrefix) -like "$(Normalize-CommandPath -Path $fnmNodeVersions)*" -or (Normalize-CommandPath -Path $npmPrefix) -like "$(Normalize-CommandPath -Path $layout.FnmDefaultAlias)*") {
+    $failures.Add("npm prefix '$npmPrefix' is inside the fnm Node install; globals will not survive a Node version change.") | Out-Null
+}
+elseif ((Normalize-CommandPath -Path $npmPrefix) -ine (Normalize-CommandPath -Path $layout.NpmPrefix)) {
+    $failures.Add("npm prefix is '$npmPrefix', expected '$($layout.NpmPrefix)'.") | Out-Null
+}
+
+# npm/corepack and their shims must come from the npm prefix, not the copies bundled with Node.
+$expectedCommandDirs = @{
+    node     = $layout.FnmDefaultAlias
+    npm      = $layout.NpmPrefix
+    npx      = $layout.NpmPrefix
+    corepack = $layout.NpmPrefix
+    pnpm     = $layout.NpmPrefix
+    yarn     = $layout.NpmPrefix
+    python   = $venvScripts
+    pip      = $venvScripts
+}
+foreach ($row in @($records | Where-Object { $_.kind -eq 'local' -and $_.path -and $expectedCommandDirs.ContainsKey($_.command) })) {
+    $expectedDir = $expectedCommandDirs[$row.command]
+    if ((Normalize-CommandPath -Path (Split-Path -Parent $row.path)) -ine (Normalize-CommandPath -Path $expectedDir)) {
+        $failures.Add("$($row.context): $($row.command) resolved to '$($row.path)', expected it from '$expectedDir'.") | Out-Null
+    }
+}
+
+if ($layout.PnpmStore) {
+    $pnpmStore = if (Get-Command pnpm -ErrorAction SilentlyContinue) { @(& pnpm store path 2>$null | Select-Object -First 1)[0] } else { $null }
+    if ([string]::IsNullOrWhiteSpace($pnpmStore) -or -not (Normalize-CommandPath -Path $pnpmStore).StartsWith($layout.PreferredDrive, [System.StringComparison]::OrdinalIgnoreCase)) {
+        $failures.Add("pnpm store path is '$pnpmStore', expected it on $($layout.PreferredDrive) ('$($layout.PnpmStore)').") | Out-Null
     }
 }
 

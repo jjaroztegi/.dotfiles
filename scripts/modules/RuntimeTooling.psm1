@@ -5,22 +5,6 @@ function Get-UserShimRoot {
     return (Join-Path $env:USERPROFILE ".local\bin")
 }
 
-function Get-UserPyenvRoot {
-    return (Join-Path $env:USERPROFILE ".pyenv\pyenv-win")
-}
-
-function Get-UserPyenvCloneRoot {
-    return (Split-Path -Parent (Get-UserPyenvRoot))
-}
-
-function Get-FnmDefaultAliasRoot {
-    return (Join-Path $env:APPDATA "fnm\aliases\default")
-}
-
-function Get-FnmRoot {
-    return (Join-Path $env:APPDATA "fnm")
-}
-
 function Invoke-ExternalCommand {
     param(
         [Parameter(Mandatory = $true)]
@@ -35,35 +19,6 @@ function Invoke-ExternalCommand {
     }
 }
 
-function Get-TrimmedLines {
-    param([object[]]$InputObject)
-
-    return @(
-        $InputObject |
-            ForEach-Object { "$_".Trim() } |
-            Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
-    )
-}
-
-function Get-HighestVersionMatch {
-    param(
-        [string[]]$Candidates,
-        [string]$MajorMinor
-    )
-
-    $matching = @(
-        $Candidates |
-            Where-Object { $_ -match ('^{0}\.\d+$' -f [regex]::Escape($MajorMinor)) } |
-            Sort-Object { [version]$_ }
-    )
-
-    if ($matching.Count -gt 0) {
-        return $matching[-1]
-    }
-
-    return $null
-}
-
 function Set-UserEnvironmentVariableIfNeeded {
     param(
         [Parameter(Mandatory = $true)]
@@ -72,6 +27,7 @@ function Set-UserEnvironmentVariableIfNeeded {
         [string]$Value
     )
 
+    Set-Item -Path "Env:$Name" -Value $Value
     $currentValue = [System.Environment]::GetEnvironmentVariable($Name, 'User')
     if ($currentValue -ceq $Value) {
         return
@@ -80,135 +36,93 @@ function Set-UserEnvironmentVariableIfNeeded {
     [void](Set-ScopedEnvironmentVariable -Name $Name -Value $Value -Scope User)
 }
 
-function Invoke-GitExternalCommand {
-    param([Parameter(Mandatory = $true)][string[]]$Arguments)
+function Test-IsReparsePoint {
+    param([Parameter(Mandatory = $true)][string]$Path)
 
-    if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-        throw "Git is required to install pyenv-win automatically."
-    }
-
-    Invoke-ExternalCommand -FilePath 'git' -Arguments $Arguments
+    $item = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+    return [bool]($item -and ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint))
 }
 
-function Update-PyenvWinGitCheckout {
+function Set-ConfigFileValues {
     param(
         [Parameter(Mandatory = $true)]
-        [string]$CloneRoot
+        [string]$Path,
+        [Parameter(Mandatory = $true)]
+        [string]$Separator,
+        [Parameter(Mandatory = $true)]
+        [System.Collections.IDictionary]$Values
     )
 
-    $status = Get-TrimmedLines -InputObject (& git -C $CloneRoot status --porcelain 2>$null)
-    if ($status.Count -gt 0) {
-        $nonCacheChanges = @($status | Where-Object { $_ -notmatch '^\s*M\s+pyenv-win/\.versions_cache\.xml$' })
-        if ($nonCacheChanges.Count -gt 0) {
-            Write-LogWarn "pyenv-win checkout at $CloneRoot has local changes. Skipping automatic refresh."
-            return
+    # Merge keys into an existing file so unrelated settings survive.
+    $lines = [System.Collections.Generic.List[string]]::new()
+    if (Test-Path -LiteralPath $Path -PathType Leaf) {
+        foreach ($line in [System.IO.File]::ReadAllLines($Path)) {
+            $lines.Add($line)
         }
-
-        Invoke-GitExternalCommand -Arguments @('-C', $CloneRoot, 'checkout', '--', 'pyenv-win/.versions_cache.xml')
     }
 
-    Invoke-GitExternalCommand -Arguments @('-C', $CloneRoot, 'fetch', 'origin', 'master')
-    $branch = @(& git -C $CloneRoot rev-parse --abbrev-ref HEAD 2>$null | Select-Object -First 1)[0]
-    if ($branch -eq 'HEAD') {
-        Invoke-GitExternalCommand -Arguments @('-C', $CloneRoot, 'checkout', '-B', 'master', 'origin/master')
+    foreach ($key in $Values.Keys) {
+        $newLine = "$key$Separator$($Values[$key])"
+        $pattern = '^\s*{0}\s*{1}' -f [regex]::Escape($key), [regex]::Escape($Separator.Trim())
+        $index = -1
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -match $pattern) {
+                $index = $i
+                break
+            }
+        }
+
+        if ($index -ge 0) {
+            $lines[$index] = $newLine
+        }
+        else {
+            $lines.Add($newLine)
+        }
+    }
+
+    New-Item -Path (Split-Path -Parent $Path) -ItemType Directory -Force | Out-Null
+    [System.IO.File]::WriteAllLines($Path, $lines)
+}
+
+function Set-DevDirectoryEnvironment {
+    param([switch]$Apply)
+
+    $layout = Get-DevToolchainLayout
+    if (-not $layout.PreferredDrive) {
         return
     }
 
-    Invoke-GitExternalCommand -Arguments @('-C', $CloneRoot, 'pull', '--ff-only', 'origin', 'master')
-}
-
-function Install-PyenvWinFromArchive {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$CloneRoot
-    )
-
-    $parentDir = Split-Path -Parent $CloneRoot
-    if ($parentDir -and -not (Test-Path -LiteralPath $parentDir -PathType Container)) {
-        New-Item -Path $parentDir -ItemType Directory -Force | Out-Null
+    $drive = $layout.PreferredDrive
+    $toolchains = $layout.ToolchainsRoot
+    $cache = $layout.CacheRoot
+    $variables = [ordered]@{
+        UV_CACHE_DIR             = Join-Path $cache 'uv'
+        UV_PYTHON_INSTALL_DIR    = Join-Path $toolchains 'uv\python'
+        UV_TOOL_DIR              = Join-Path $toolchains 'uv\tools'
+        UV_TOOL_BIN_DIR          = $layout.UvToolBin
+        PIP_CACHE_DIR            = Join-Path $cache 'pip'
+        PLAYWRIGHT_BROWSERS_PATH = Join-Path $cache 'ms-playwright'
+        BUN_INSTALL_CACHE_DIR    = Join-Path $cache 'bun'
+        NUGET_PACKAGES           = Join-Path $cache 'nuget\packages'
+        GOCACHE                  = Join-Path $cache 'go-build'
+        GOPATH                   = "$drive\developer\go"
+        GOMODCACHE               = "$drive\developer\go\pkg\mod"
+        CARGO_HOME               = Join-Path $toolchains 'cargo'
+        RUSTUP_HOME              = Join-Path $toolchains 'rustup'
+        TEMP                     = "$drive\Temp"
+        TMP                      = "$drive\Temp"
     }
 
-    if (Test-Path -LiteralPath $CloneRoot -PathType Container) {
-        $existingItems = @(Get-ChildItem -LiteralPath $CloneRoot -Force -ErrorAction SilentlyContinue)
-        if ($existingItems.Count -gt 0) {
-            throw "Cannot install pyenv-win because '$CloneRoot' already exists and is not empty."
-        }
-    }
-
-    $archivePath = Join-Path $env:TEMP 'pyenv-win.zip'
-    $extractRoot = Join-Path $env:TEMP ("pyenv-win-{0}" -f [guid]::NewGuid())
-
-    try {
-        Write-LogInfo "Installing pyenv-win from the official release archive..."
-        Invoke-WebRequest -Uri 'https://github.com/pyenv-win/pyenv-win/archive/refs/heads/master.zip' -OutFile $archivePath
-        Expand-Archive -Path $archivePath -DestinationPath $extractRoot -Force
-        $sourceRoot = Get-ChildItem -LiteralPath $extractRoot -Directory | Select-Object -First 1
-        if (-not $sourceRoot) {
-            throw "pyenv-win archive did not contain an extracted directory."
-        }
-
-        Move-Item -LiteralPath $sourceRoot.FullName -Destination $CloneRoot -Force
-    }
-    finally {
-        Remove-Item -LiteralPath $archivePath -Force -ErrorAction SilentlyContinue
-        Remove-Item -LiteralPath $extractRoot -Recurse -Force -ErrorAction SilentlyContinue
-    }
-}
-
-function Ensure-PyenvWinInstalled {
-    param([switch]$Apply)
-
-    $pyenvRoot = Get-UserPyenvRoot
-    $cloneRoot = Get-UserPyenvCloneRoot
-    $pyenvBin = Join-Path $pyenvRoot 'bin'
-    $pyenvShims = Join-Path $pyenvRoot 'shims'
-
-    if (-not (Test-Path -LiteralPath $pyenvRoot -PathType Container)) {
+    foreach ($name in $variables.Keys) {
+        $value = $variables[$name]
         if (-not $Apply) {
-            Write-LogDryRun "Would install pyenv-win into $cloneRoot"
-            return
+            Write-LogDryRun "Would persist $name=$value"
+            continue
         }
-        else {
-            if (Test-Path -LiteralPath (Join-Path $cloneRoot '.git') -PathType Container) {
-                Write-LogInfo "Updating pyenv-win checkout in $cloneRoot..."
-                Update-PyenvWinGitCheckout -CloneRoot $cloneRoot
-            }
-            else {
-                $parentDir = Split-Path -Parent $cloneRoot
-                if ($parentDir -and -not (Test-Path -LiteralPath $parentDir -PathType Container)) {
-                    New-Item -Path $parentDir -ItemType Directory -Force | Out-Null
-                }
 
-                if (Test-Path -LiteralPath $cloneRoot -PathType Container) {
-                    $existingItems = @(Get-ChildItem -LiteralPath $cloneRoot -Force -ErrorAction SilentlyContinue)
-                    if ($existingItems.Count -gt 0) {
-                        throw "Cannot install pyenv-win because '$cloneRoot' already exists and is not a git checkout."
-                    }
-                }
-
-                if (Get-Command git -ErrorAction SilentlyContinue) {
-                    Write-LogInfo "Installing pyenv-win from the official git repository..."
-                    Invoke-GitExternalCommand -Arguments @('clone', 'https://github.com/pyenv-win/pyenv-win.git', $cloneRoot)
-                }
-                else {
-                    Install-PyenvWinFromArchive -CloneRoot $cloneRoot
-                }
-            }
-        }
+        New-Item -Path $value -ItemType Directory -Force | Out-Null
+        Set-UserEnvironmentVariableIfNeeded -Name $name -Value $value
     }
-    elseif ($Apply -and (Test-Path -LiteralPath (Join-Path $cloneRoot '.git') -PathType Container)) {
-        Write-LogInfo "Refreshing pyenv-win checkout in $cloneRoot..."
-        Update-PyenvWinGitCheckout -CloneRoot $cloneRoot
-    }
-
-    $pyenvHome = $pyenvRoot.TrimEnd('\') + '\'
-    Set-UserEnvironmentVariableIfNeeded -Name 'PYENV' -Value $pyenvHome
-    Set-UserEnvironmentVariableIfNeeded -Name 'PYENV_ROOT' -Value $pyenvHome
-    Set-UserEnvironmentVariableIfNeeded -Name 'PYENV_HOME' -Value $pyenvHome
-    [void](Add-PathEntry -Entry $pyenvBin -Scope User)
-    [void](Add-PathEntry -Entry $pyenvShims -Scope User)
-    Update-StandardPaths -IsAdmin (Test-IsAdmin) | Out-Null
-    Update-Path
 }
 
 function Remove-ObsoleteRuntimeWrappers {
@@ -220,11 +134,7 @@ function Remove-ObsoleteRuntimeWrappers {
         'node.cmd', 'node.ps1', 'node',
         'npm.cmd', 'npm.ps1', 'npm',
         'npx.cmd', 'npx.ps1', 'npx',
-        'corepack.cmd', 'corepack.ps1', 'corepack',
-        'python.cmd', 'python.ps1', 'python',
-        'python3.cmd', 'python3.ps1', 'python3',
-        'pip.cmd', 'pip.ps1', 'pip',
-        'pip3.cmd', 'pip3.ps1', 'pip3'
+        'corepack.cmd', 'corepack.ps1', 'corepack'
     )
 
     foreach ($wrapperName in $obsoleteWrapperNames) {
@@ -268,9 +178,7 @@ function Test-IsObsoleteRuntimeWrapper {
     $normalized = $content -replace "`r`n", "`n"
     $targetsManagedRuntime = (
         $normalized -like '*\AppData\Roaming\fnm\*' -or
-        $normalized -like '*\fnm.exe*' -or
-        $normalized -like '*\.pyenv\pyenv-win\shims\*' -or
-        $normalized -like '*\.pyenv\pyenv-win\versions\*'
+        $normalized -like '*\fnm.exe*'
     )
     if (-not $targetsManagedRuntime) {
         return $false
@@ -292,31 +200,102 @@ function Test-IsObsoleteRuntimeWrapper {
 function Register-FnmDefaultRuntimePath {
     param([switch]$Apply)
 
-    $fnmRoot = Get-FnmRoot
-    $defaultAliasRoot = Get-FnmDefaultAliasRoot
+    $defaultAliasRoot = (Get-DevToolchainLayout).FnmDefaultAlias
 
     if ($Apply) {
-        Set-UserEnvironmentVariableIfNeeded -Name 'FNM_DIR' -Value $fnmRoot
-        if (-not (Test-Path -LiteralPath $defaultAliasRoot -PathType Container)) {
-            throw "fnm default alias is missing at $defaultAliasRoot"
+        # PATH points at the alias, so it must stay the junction fnm repoints on 'fnm default'.
+        if (-not (Test-IsReparsePoint -Path $defaultAliasRoot)) {
+            throw "fnm default alias at $defaultAliasRoot is missing or is not a junction."
         }
 
         [void](Add-PathEntry -Entry $defaultAliasRoot -Scope User)
     }
     else {
-        Write-LogDryRun "Would persist FNM_DIR=$fnmRoot"
         Write-LogDryRun "Would register fnm default alias path in user PATH: $defaultAliasRoot"
     }
+}
+
+function Set-NpmGlobalConfig {
+    param([switch]$Apply)
+
+    # Version-independent prefix: npm's default prefix is the active Node install directory, so
+    # npm upgrades and global packages would be lost on every Node version change.
+    $layout = Get-DevToolchainLayout
+    $npm = Join-Path $layout.FnmDefaultAlias 'npm.cmd'
+    $settings = [ordered]@{ prefix = $layout.NpmPrefix }
+    if ($layout.CacheRoot) {
+        $settings.cache = Join-Path $layout.CacheRoot 'npm'
+    }
+
+    foreach ($key in $settings.Keys) {
+        if (-not $Apply) {
+            Write-LogDryRun "Would run: npm config set $key $($settings[$key]) --location=user"
+            continue
+        }
+
+        Invoke-ExternalCommand -FilePath $npm -Arguments @('config', 'set', $key, $settings[$key], '--location=user')
+    }
+
+    if (-not $Apply) {
+        Write-LogDryRun "Would run: npm install -g npm@latest corepack@latest"
+        return
+    }
+
+    New-Item -Path $layout.NpmPrefix -ItemType Directory -Force | Out-Null
+    Write-LogInfo "Installing npm and corepack into $($layout.NpmPrefix)..."
+    Invoke-ExternalCommand -FilePath $npm -Arguments @('install', '-g', 'npm@latest', 'corepack@latest')
+}
+
+function Set-PnpmGlobalConfig {
+    param([switch]$Apply)
+
+    $layout = Get-DevToolchainLayout
+    $corepack = Join-Path $layout.NpmPrefix 'corepack.cmd'
+    $corepackArguments = @('enable', '--install-directory', $layout.NpmPrefix, 'pnpm', 'yarn')
+    if ($Apply) {
+        Write-LogInfo "Enabling pnpm and yarn via corepack..."
+        Invoke-ExternalCommand -FilePath $corepack -Arguments $corepackArguments
+    }
+    else {
+        Write-LogDryRun "Would run: corepack $($corepackArguments -join ' ')"
+    }
+
+    if (-not $layout.PreferredDrive) {
+        return
+    }
+
+    $configDir = Join-Path $env:LOCALAPPDATA 'pnpm\config'
+    $settings = [ordered]@{
+        storeDir     = $layout.PnpmStore
+        cacheDir     = Join-Path $layout.CacheRoot 'pnpm'
+        globalDir    = Join-Path $layout.PnpmHome 'global'
+        globalBinDir = $layout.PnpmBin
+    }
+
+    if (-not $Apply) {
+        Write-LogDryRun "Would persist PNPM_HOME=$($layout.PnpmHome)"
+        Write-LogDryRun "Would merge pnpm settings into $configDir (config.yaml, rc): store $($layout.PnpmStore)"
+        return
+    }
+
+    Set-UserEnvironmentVariableIfNeeded -Name 'PNPM_HOME' -Value $layout.PnpmHome
+    New-Item -Path $layout.PnpmBin -ItemType Directory -Force | Out-Null
+    # pnpm 11 reads config.yaml; pnpm 10 still reads the ini-style rc file.
+    Set-ConfigFileValues -Path (Join-Path $configDir 'config.yaml') -Separator ': ' -Values $settings
+    Set-ConfigFileValues -Path (Join-Path $configDir 'rc') -Separator '=' -Values ([ordered]@{ 'store-dir' = $layout.PnpmStore })
 }
 
 function Set-NodeRuntimeState {
     param([switch]$Apply)
 
     $runtimePolicy = (Get-RuntimePolicy).node
-    $fnmRoot = Get-FnmRoot
-    $env:FNM_DIR = $fnmRoot
+    $layout = Get-DevToolchainLayout
+    $env:FNM_DIR = $layout.FnmDir
     if ($Apply) {
-        Set-UserEnvironmentVariableIfNeeded -Name 'FNM_DIR' -Value $fnmRoot
+        Set-UserEnvironmentVariableIfNeeded -Name 'FNM_DIR' -Value $layout.FnmDir
+    }
+    else {
+        Write-LogDryRun "Would persist FNM_DIR=$($layout.FnmDir)"
     }
 
     if (-not (Get-Command fnm -ErrorAction SilentlyContinue)) {
@@ -334,6 +313,10 @@ function Set-NodeRuntimeState {
         $fnmPath = (Get-Command fnm -ErrorAction Stop).Path
     }
 
+    if ((Test-Path -LiteralPath $layout.FnmDefaultAlias) -and -not (Test-IsReparsePoint -Path $layout.FnmDefaultAlias)) {
+        throw "fnm default alias at $($layout.FnmDefaultAlias) is a real directory, not the junction fnm creates. Move anything you need out of it, delete it, and re-run."
+    }
+
     if ($Apply) {
         Write-LogInfo "Ensuring Node.js $($runtimePolicy.channel) v$($runtimePolicy.version) via fnm..."
         Invoke-ExternalCommand -FilePath $fnmPath -Arguments @('install', $runtimePolicy.version)
@@ -345,63 +328,129 @@ function Set-NodeRuntimeState {
 
     Remove-ObsoleteRuntimeWrappers -Apply:$Apply
     Register-FnmDefaultRuntimePath -Apply:$Apply
+    Set-NpmGlobalConfig -Apply:$Apply
+    Set-PnpmGlobalConfig -Apply:$Apply
 }
 
 function Set-PythonRuntimeState {
     param([switch]$Apply)
 
-    $runtimePolicy = (Get-RuntimePolicy).python
-    if ($Apply -or -not (Get-Command pyenv -ErrorAction SilentlyContinue)) {
-        Ensure-PyenvWinInstalled -Apply:$Apply
-    }
-
-    if (-not (Get-Command pyenv -ErrorAction SilentlyContinue)) {
-        if (-not $Apply) {
-            Write-LogDryRun "Would ensure pyenv-win is installed and available on PATH"
-            return
-        }
-        throw "pyenv-win is required but not installed."
-    }
-
-    $pyenvPath = (Get-Command pyenv -ErrorAction Stop).Source
-    if (-not $pyenvPath) {
-        $pyenvPath = (Get-Command pyenv -ErrorAction Stop).Path
-    }
-
-    $installedVersions = Get-TrimmedLines -InputObject (& $pyenvPath versions --bare 2>$null)
-    $availableVersions = Get-TrimmedLines -InputObject (& $pyenvPath install --list 2>$null)
-    $selectedVersion = Get-HighestVersionMatch -Candidates $availableVersions -MajorMinor $runtimePolicy.majorMinor
-
-    if (-not $selectedVersion) {
-        $selectedVersion = Get-HighestVersionMatch -Candidates $installedVersions -MajorMinor $runtimePolicy.majorMinor
-    }
-
-    if (-not $selectedVersion) {
-        $selectedVersion = $runtimePolicy.fallbackExactVersion
-    }
-
-    if ([string]::IsNullOrWhiteSpace($selectedVersion)) {
-        throw "Unable to resolve a supported pyenv-win Python version for $($runtimePolicy.majorMinor)."
-    }
-
-    $pyenvBin = Join-Path (Get-UserPyenvRoot) "bin"
-    $pyenvShims = Join-Path (Get-UserPyenvRoot) "shims"
+    $layout = Get-DevToolchainLayout
+    $majorMinor = $layout.PythonMajorMinor
+    $venvPython = Join-Path $layout.PythonVenv 'Scripts\python.exe'
 
     if ($Apply) {
-        if (-not ($installedVersions -contains $selectedVersion)) {
-            Write-LogInfo "Installing Python $selectedVersion via pyenv-win..."
-            Invoke-ExternalCommand -FilePath $pyenvPath -Arguments @('install', $selectedVersion)
-        }
-
-        Write-LogInfo "Setting pyenv-win global Python to $selectedVersion..."
-        Invoke-ExternalCommand -FilePath $pyenvPath -Arguments @('global', $selectedVersion)
-        Invoke-ExternalCommand -FilePath $pyenvPath -Arguments @('rehash')
-        [void](Add-PathEntry -Entry $pyenvBin -Scope User)
-        [void](Add-PathEntry -Entry $pyenvShims -Scope User)
+        Set-UserEnvironmentVariableIfNeeded -Name 'PYTHONUTF8' -Value '1'
     }
     else {
-        Write-LogDryRun "Would ensure pyenv-win Python $selectedVersion and register $pyenvBin / $pyenvShims in user PATH"
+        Write-LogDryRun "Would persist PYTHONUTF8=1"
     }
+
+    if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
+        if ($Apply) {
+            Write-LogWarn "uv is not installed yet. Deferring Python runtime configuration until uv is installed."
+            return
+        }
+
+        Write-LogDryRun "Would configure Python via uv once it is installed."
+        return
+    }
+
+    if (-not $Apply) {
+        Write-LogDryRun "Would run: uv python install $majorMinor --default"
+        if (-not (Test-Path -LiteralPath $venvPython -PathType Leaf)) {
+            Write-LogDryRun "Would create seeded global venv $($layout.PythonVenv)"
+        }
+        return
+    }
+
+    Write-LogInfo "Ensuring Python $majorMinor via uv..."
+    Invoke-ExternalCommand -FilePath 'uv' -Arguments @('python', 'install', $majorMinor, '--default')
+    if (-not (Test-Path -LiteralPath $venvPython -PathType Leaf)) {
+        Write-LogInfo "Creating global Python venv at $($layout.PythonVenv)..."
+        Invoke-ExternalCommand -FilePath 'uv' -Arguments @('venv', '--seed', '--python', $majorMinor, $layout.PythonVenv)
+    }
+}
+
+function Set-ProfileJunction {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+        [Parameter(Mandatory = $true)]
+        [string]$Target,
+        [switch]$Apply
+    )
+
+    $item = Get-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
+    if ($item -and (Test-IsReparsePoint -Path $Path)) {
+        if ((Format-PathEntryText -Entry "$($item.Target)") -ine (Format-PathEntryText -Entry $Target)) {
+            Write-LogWarn "$Path is a link to '$($item.Target)', expected '$Target'. Leaving it in place."
+        }
+        return
+    }
+
+    if ($item -and @(Get-ChildItem -LiteralPath $Path -Force -ErrorAction SilentlyContinue).Count -gt 0) {
+        Write-LogWarn "$Path has content. Move it to $Target, delete $Path, and re-run to create the junction."
+        return
+    }
+
+    if (-not $Apply) {
+        Write-LogDryRun "Would create junction $Path -> $Target"
+        return
+    }
+
+    New-Item -Path $Target -ItemType Directory -Force | Out-Null
+    if ($item) {
+        Remove-Item -LiteralPath $Path -Force
+    }
+    New-Item -Path (Split-Path -Parent $Path) -ItemType Directory -Force | Out-Null
+    New-Item -Path $Path -ItemType Junction -Target $Target | Out-Null
+    Write-LogInfo "Created junction $Path -> $Target"
+}
+
+function Set-ProfileJunctions {
+    param([switch]$Apply)
+
+    # Directory junctions for tools without a relocation setting. T3 Code resolves realpath, so its
+    # scratch root can live on the preferred drive.
+    $layout = Get-DevToolchainLayout
+    if (-not $layout.PreferredDrive) {
+        return
+    }
+
+    $developerRoot = "$($layout.PreferredDrive)\developer"
+    Set-ProfileJunction -Path (Join-Path $env:USERPROFILE '.cache') -Target (Join-Path $layout.CacheRoot 'home') -Apply:$Apply
+    Set-ProfileJunction -Path (Join-Path $env:USERPROFILE '.t3\scratch') -Target (Join-Path $developerRoot '.t3\scratch') -Apply:$Apply
+}
+
+function Set-T3WorktreesDirectory {
+    param([switch]$Apply)
+
+    $layout = Get-DevToolchainLayout
+    if (-not $layout.PreferredDrive) {
+        return
+    }
+
+    $settingsPath = Join-Path $env:USERPROFILE '.t3\userdata\settings.json'
+    if (-not (Test-Path -LiteralPath $settingsPath -PathType Leaf)) {
+        Write-LogSkip "T3 Code settings not found at $settingsPath. Skipping worktreesDirectory."
+        return
+    }
+
+    $settings = Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-Json
+    if ($settings.PSObject.Properties.Name -contains 'worktreesDirectory') {
+        return
+    }
+
+    $worktreesDirectory = "$($layout.PreferredDrive)\worktrees"
+    if (-not $Apply) {
+        Write-LogDryRun "Would set T3 Code worktreesDirectory=$worktreesDirectory in $settingsPath"
+        return
+    }
+
+    $settings | Add-Member -NotePropertyName 'worktreesDirectory' -NotePropertyValue $worktreesDirectory
+    [System.IO.File]::WriteAllText($settingsPath, ($settings | ConvertTo-Json -Depth 100))
+    Write-LogInfo "Set T3 Code worktreesDirectory=$worktreesDirectory"
 }
 
 function Invoke-RuntimeToolingSetup {
@@ -409,8 +458,11 @@ function Invoke-RuntimeToolingSetup {
     param([switch]$Execute)
 
     Write-LogInfo "Applying runtime policy..."
+    Set-DevDirectoryEnvironment -Apply:$Execute
     Set-NodeRuntimeState -Apply:$Execute
     Set-PythonRuntimeState -Apply:$Execute
+    Set-ProfileJunctions -Apply:$Execute
+    Set-T3WorktreesDirectory -Apply:$Execute
 
     if ($Execute) {
         Update-StandardPaths -IsAdmin (Test-IsAdmin) | Out-Null

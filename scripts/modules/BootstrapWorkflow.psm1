@@ -22,7 +22,7 @@ function Invoke-UserSetupPhase {
     }
 
     Install-PackageManagers
-    Install-DevTools -Scope User -ExcludePackageKeys @('pyenv-win')
+    Install-DevTools -Scope User
     Invoke-ManagedRuntimeMaintenance
 
     Write-LogInfo "Nerd Font installation is deferred to the admin phase on Windows."
@@ -48,7 +48,6 @@ function Invoke-AdminSetupPhase {
     }
 
     $excludedPackageKeys = [System.Collections.Generic.List[string]]::new()
-    $excludedPackageKeys.Add('pyenv-win') | Out-Null
     if (-not (Test-InteractiveSession)) {
         Write-LogWarn "Ghostscript and MSYS2 installation are skipped in non-interactive admin sessions because their installers can hang."
         $excludedPackageKeys.Add('ghostscript') | Out-Null
@@ -129,6 +128,8 @@ function Start-DotfilesBootstrap {
     if ($PreferredDrive) {
         Set-PlacementOverride -PreferredDrive $PreferredDrive
         $env:DOTFILES_PREFERRED_DRIVE = $PreferredDrive.ToUpperInvariant()
+        # Persist per machine so later deploy/validate runs use the same layout without the flag.
+        [void](Set-ScopedEnvironmentVariable -Name 'DOTFILES_PREFERRED_DRIVE' -Value $env:DOTFILES_PREFERRED_DRIVE -Scope User)
     }
 
     $placement = Get-ManagedPlacement

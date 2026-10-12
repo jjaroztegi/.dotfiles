@@ -25,11 +25,13 @@ Or run the full bootstrap from a local clone:
 powershell.exe -ExecutionPolicy Bypass -File .\scripts\bootstrap.ps1
 ```
 
-Prefer another drive for placement-aware installs:
+Prefer another drive for placement-aware installs (overrides `preferredDrive` in `config/placement.json`; persisted per machine as the `DOTFILES_PREFERRED_DRIVE` User variable):
 
 ```powershell
 powershell.exe -ExecutionPolicy Bypass -File .\scripts\bootstrap.ps1 -PreferredDrive D:
 ```
+
+With a preferred drive, developer toolchains (fnm, npm/pnpm globals, uv Python and tools, Cargo/rustup) go to `<drive>\developer\toolchains` and caches to `<drive>\developer\cache`; see [`docs/windows-runtime-environment.md`](docs/windows-runtime-environment.md#developer-drive-layout).
 
 Deploy dotfiles only:
 
@@ -41,7 +43,8 @@ Notes:
 
 - A standard-user run handles user-scoped setup.
 - An admin run handles machine-wide installs and deferred packages.
-- `deploy.ps1` creates symlinks when possible and falls back to copying when it cannot.
+- `deploy.ps1` creates symlinks when possible and falls back to copying when it cannot. `.wslconfig` is always copied: WSL ignores it when it is a symlink.
+- Node comes from fnm; npm, corepack, pnpm, and yarn from the version-independent npm prefix; Python from uv.
 
 ### macOS / Linux
 

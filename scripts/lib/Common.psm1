@@ -131,7 +131,6 @@ function Get-CommandProbeArgs {
         "wt"       = @("--version")
         "go"       = @("version")
         "ffmpeg"   = @("-version")
-        "pyenv"    = @("--version")
         "7z"       = @("i")
         "gswin64c" = @("-version")
     }

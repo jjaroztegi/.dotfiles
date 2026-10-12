@@ -87,6 +87,30 @@ function Get-ManagedPlacement {
     }
 }
 
+function Get-DevToolchainLayout {
+    $drive = Get-PreferredDrive
+    $toolchainsRoot = if ($drive) { "$drive\developer\toolchains" } else { $null }
+    $cacheRoot = if ($drive) { "$drive\developer\cache" } else { $null }
+    $fnmDir = if ($toolchainsRoot) { Join-Path $toolchainsRoot 'fnm' } else { Join-Path $env:APPDATA 'fnm' }
+    $pythonMajorMinor = (Get-RuntimePolicy).python.majorMinor
+    $pythonVenvParent = if ($toolchainsRoot) { $toolchainsRoot } else { $env:LOCALAPPDATA }
+
+    return [pscustomobject]@{
+        PreferredDrive = $drive
+        ToolchainsRoot = $toolchainsRoot
+        CacheRoot = $cacheRoot
+        FnmDir = $fnmDir
+        FnmDefaultAlias = Join-Path $fnmDir 'aliases\default'
+        NpmPrefix = if ($toolchainsRoot) { Join-Path $toolchainsRoot 'npm-global' } else { Join-Path $env:APPDATA 'npm' }
+        PnpmHome = if ($toolchainsRoot) { Join-Path $toolchainsRoot 'pnpm' } else { $null }
+        PnpmBin = if ($toolchainsRoot) { Join-Path $toolchainsRoot 'pnpm\bin' } else { $null }
+        PnpmStore = if ($drive) { "$drive\.pnpm-store" } else { $null }
+        UvToolBin = if ($toolchainsRoot) { Join-Path $toolchainsRoot 'uv\bin' } else { $null }
+        PythonMajorMinor = $pythonMajorMinor
+        PythonVenv = Join-Path $pythonVenvParent "python\global-$pythonMajorMinor"
+    }
+}
+
 function Get-PackageCatalog {
     if (-not $script:PackageCatalogCache) {
         $script:PackageCatalogCache = Read-JsonFile -Path (Get-DotfilesConfigPath -Name "package-catalog.json")
@@ -146,7 +170,7 @@ function Test-IsStalePathEntry {
 
     $stalePatterns = @(
         '*\AppData\Local\Microsoft\WinGet\Packages\*',
-        '*\AppData\Roaming\fnm\multishells\*',
+        '*\fnm\multishells\*',
         '*\ProgramData\chocolatey\lib\*'
     )
 
@@ -163,10 +187,15 @@ function Get-PreferredPathEntries {
     param([ValidateSet('User', 'Machine')][string]$Scope)
 
     if ($Scope -eq 'User') {
+        # Order matters: the global venv must shadow uv's python trampolines in .local\bin, and the
+        # npm prefix (npm, corepack, pnpm/yarn shims) must shadow the copies bundled with Node.
+        $layout = Get-DevToolchainLayout
         $entries = @(
-            (Join-Path $env:USERPROFILE ".pyenv\pyenv-win\shims"),
-            (Join-Path $env:USERPROFILE ".pyenv\pyenv-win\bin"),
-            (Join-Path $env:APPDATA "fnm\aliases\default"),
+            $layout.UvToolBin,
+            (Join-Path $layout.PythonVenv "Scripts"),
+            $layout.NpmPrefix,
+            $layout.FnmDefaultAlias,
+            $layout.PnpmBin,
             (Join-Path $env:USERPROFILE ".local\bin"),
             (Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Links"),
             (Join-Path $env:LOCALAPPDATA "Microsoft\WindowsApps")
@@ -197,6 +226,24 @@ function Get-PreferredPathEntries {
     }
 
     return @($machineEntries | Where-Object { $_ })
+}
+
+function Get-GitUsrBinPath {
+    $git = Get-Command git -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $git) {
+        return $null
+    }
+
+    $dir = Split-Path -Parent $git.Source
+    while ($dir) {
+        $candidate = Join-Path $dir 'usr\bin'
+        if (Test-Path -LiteralPath (Join-Path $candidate 'grep.exe') -PathType Leaf) {
+            return $candidate
+        }
+        $dir = Split-Path -Parent $dir
+    }
+
+    return $null
 }
 
 function Set-ScopedEnvironmentVariable {
@@ -266,6 +313,12 @@ function Repair-PathScope {
         }
     }
 
+    # Git's usr\bin (grep, sed, awk, ...) goes last so Machine PATH and every other entry win.
+    $trailingEntry = if ($Scope -eq 'User') { Format-PathEntryText -Entry (Get-GitUsrBinPath) } else { $null }
+    if ($trailingEntry) {
+        [void]$seen.Add($trailingEntry)
+    }
+
     foreach ($preferred in Get-PreferredPathEntries -Scope $Scope) {
         $normalizedPreferred = Format-PathEntryText -Entry $preferred
         if (-not $normalizedPreferred) {
@@ -294,6 +347,10 @@ function Repair-PathScope {
         if ($seen.Add($normalized)) {
             $normalizedEntries.Add($normalized)
         }
+    }
+
+    if ($trailingEntry -and -not $inheritedSet.Contains($trailingEntry)) {
+        $normalizedEntries.Add($trailingEntry)
     }
 
     Set-PathEntries -Scope $Scope -Entries $normalizedEntries
@@ -370,7 +427,7 @@ function Update-StandardPaths {
     return $updated
 }
 
-Export-ModuleMember -Function Set-PlacementOverride, Get-PlacementConfig, Get-PreferredDrive, Get-ManagedPlacement, `
+Export-ModuleMember -Function Set-PlacementOverride, Get-PlacementConfig, Get-PreferredDrive, Get-ManagedPlacement, Get-DevToolchainLayout, `
     Get-PackageCatalog, Get-RuntimePolicy, Get-ManagedPackages, Split-PathEntries, Format-PathEntryText, `
     Test-IsStalePathEntry, Get-PreferredPathEntries, Set-PathEntries, Repair-PathScope, Repair-StandardPaths, `
     Add-PathEntry, Update-StandardPaths, Set-ScopedEnvironmentVariable

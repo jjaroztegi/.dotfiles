@@ -6,9 +6,7 @@
     "commands": ["node", "npm", "npx", "corepack"]
   },
   "python": {
-    "manager": "pyenv-win",
-    "majorMinor": "3.13",
-    "fallbackExactVersion": "3.13.0",
-    "legacyUnsupportedMajorMinor": ["3.14"]
+    "manager": "uv",
+    "majorMinor": "3.13"
   }
 }
