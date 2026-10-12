@@ -96,20 +96,64 @@ function Update-PowerShell {
 }
 
 function Clear-Cache {
-    Write-Host "Clearing cache..." -ForegroundColor Cyan
-    # Clear Windows Prefetch
-    Write-Host "Clearing Windows Prefetch..." -ForegroundColor Yellow
-    Remove-Item -Path "$env:SystemRoot\Prefetch\*" -Force -ErrorAction SilentlyContinue
-    # Clear Windows Temp
-    Write-Host "Clearing Windows Temp..." -ForegroundColor Yellow
-    Remove-Item -Path "$env:SystemRoot\Temp\*" -Recurse -Force -ErrorAction SilentlyContinue
-    # Clear User Temp
-    Write-Host "Clearing User Temp..." -ForegroundColor Yellow
-    Remove-Item -Path "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
-    # Clear Internet Explorer Cache
-    Write-Host "Clearing Internet Explorer Cache..." -ForegroundColor Yellow
-    Remove-Item -Path "$env:LOCALAPPDATA\Microsoft\Windows\INetCache\*" -Recurse -Force -ErrorAction SilentlyContinue
-    Write-Host "Cache clearing completed." -ForegroundColor Green
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        # Only files untouched for this long are removed, so running tools and agents keep their working files.
+        [int]$OlderThanDays = 7,
+        # Also prune npm, pnpm and uv caches down to what is still referenced.
+        [switch]$DevCaches
+    )
+
+    $cutoff = (Get-Date).AddDays(-$OlderThanDays)
+    $roots = @($env:TEMP, "$env:LOCALAPPDATA\Microsoft\Windows\INetCache")
+    if ($isAdmin) { $roots += "$env:SystemRoot\Temp" } else { Write-Host "Skipping $env:SystemRoot\Temp (needs admin)." -ForegroundColor DarkGray }
+
+    foreach ($root in $roots | Select-Object -Unique) {
+        if (-not (Test-Path -LiteralPath $root)) { continue }
+
+        # Reparse points are skipped so links never lead outside the cache root.
+        $files = @(Get-ChildItem -LiteralPath $root -Recurse -Force -File -Attributes !ReparsePoint -ErrorAction SilentlyContinue |
+                Where-Object LastWriteTime -lt $cutoff)
+        $bytes = ($files | Measure-Object Length -Sum).Sum
+        if (-not $PSCmdlet.ShouldProcess($root, ("Remove {0} files ({1:N1} MB) older than {2:d}" -f $files.Count, ($bytes / 1MB), $cutoff))) { continue }
+
+        $freed = 0
+        $skipped = 0
+        foreach ($file in $files) {
+            try {
+                Remove-Item -LiteralPath $file.FullName -Force -ErrorAction Stop
+                $freed += $file.Length
+            }
+            catch {
+                # In use or access denied: leave it for the next run.
+                $skipped++
+            }
+        }
+
+        # Deepest first, so parents empty out before they are checked.
+        Get-ChildItem -LiteralPath $root -Recurse -Force -Directory -Attributes !ReparsePoint -ErrorAction SilentlyContinue |
+            Where-Object LastWriteTime -lt $cutoff |
+            Sort-Object { $_.FullName.Length } -Descending |
+            Where-Object { -not (Get-ChildItem -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue | Select-Object -First 1) } |
+            Remove-Item -Force -ErrorAction SilentlyContinue
+
+        Write-Host ("{0}: freed {1:N1} MB, skipped {2} in-use files" -f $root, ($freed / 1MB), $skipped) -ForegroundColor Green
+    }
+
+    if (-not $DevCaches) { return }
+
+    $prune = [ordered]@{
+        npm  = @('cache', 'verify')
+        pnpm = @('store', 'prune')
+        uv   = @('cache', 'prune')
+    }
+    foreach ($tool in $prune.Keys) {
+        if (-not (Get-Command $tool -CommandType Application, ExternalScript -ErrorAction SilentlyContinue)) { continue }
+        if ($PSCmdlet.ShouldProcess("$tool cache", "$tool $($prune[$tool] -join ' ')")) {
+            Write-Host "$tool $($prune[$tool] -join ' ')" -ForegroundColor Cyan
+            & $tool @($prune[$tool])
+        }
+    }
 }
 
 # Admin Check and Prompt Customization
@@ -372,34 +416,6 @@ function unzip {
     }
 
     Expand-Archive -LiteralPath $File -DestinationPath (Get-Location) -Force
-}
-
-function hb {
-    if ($args.Length -eq 0) {
-        Write-Error "No file path specified."
-        return
-    }
-    $FilePath = $args[0]
-    if (Test-Path $FilePath) {
-        $Content = Get-Content $FilePath -Raw
-    }
-    else {
-        Write-Error "File path does not exist."
-        return
-    }
-    $uri = "http://bin.christitus.com/documents"
-    try {
-        $response = Invoke-RestMethod -Uri $uri -Method Post -Body $Content -ErrorAction Stop
-        $hasteKey = $response.key
-        $url = "http://bin.christitus.com/$hasteKey"
-        if ($script:IsDesktopProfile) {
-            Set-Clipboard $url
-        }
-        Write-Output $url
-    }
-    catch {
-        Write-Error "Failed to upload the document. Error: $_"
-    }
 }
 
 function df { Get-Volume }
@@ -792,7 +808,7 @@ $($PSStyle.Foreground.Yellow)=======================$($PSStyle.Reset)
 $($PSStyle.Foreground.Green)Update-PowerShell$($PSStyle.Reset) - Checks for the latest PowerShell release and updates if a new version is available.
 $($PSStyle.Foreground.Green)Update-Profile$($PSStyle.Reset) - Updates the current user's PowerShell profile from the GitHub repository.
 $($PSStyle.Foreground.Green)Edit-Profile$($PSStyle.Reset) - Opens the current user's profile for editing using the configured editor.
-$($PSStyle.Foreground.Green)Clear-Cache$($PSStyle.Reset) - Clears Windows prefetch, temp files, and browser cache.
+$($PSStyle.Foreground.Green)Clear-Cache$($PSStyle.Reset) [-OlderThanDays 7] [-DevCaches] [-WhatIf] - Removes temp and browser cache files older than N days; -DevCaches also prunes npm/pnpm/uv caches.
 $($PSStyle.Foreground.Green)touch$($PSStyle.Reset) <file> - Creates a file or updates its timestamp.
 $($PSStyle.Foreground.Green)ff$($PSStyle.Reset) <name> - Finds files recursively with the specified name.
 $($PSStyle.Foreground.Green)Get-PubIP$($PSStyle.Reset) - Retrieves the public IP address of the machine.
@@ -800,7 +816,6 @@ $($PSStyle.Foreground.Green)winutil$($PSStyle.Reset) - Runs the latest WinUtil f
 $($PSStyle.Foreground.Green)uptime$($PSStyle.Reset) - Displays the system uptime.
 $($PSStyle.Foreground.Green)Invoke-Profile$($PSStyle.Reset) - Reloads the current user's PowerShell profile.
 $($PSStyle.Foreground.Green)unzip$($PSStyle.Reset) <file> - Extracts a zip file to the current directory.
-$($PSStyle.Foreground.Green)hb$($PSStyle.Reset) <file> - Uploads the specified file's content to a hastebin-like service and returns the URL.
 $($PSStyle.Foreground.Green)df$($PSStyle.Reset) - Displays information about volumes.
 $($PSStyle.Foreground.Green)which$($PSStyle.Reset) <name> - Shows the path of the command.
 $($PSStyle.Foreground.Green)export$($PSStyle.Reset) <name> <value> - Sets an environment variable.
