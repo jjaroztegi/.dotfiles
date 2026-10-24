@@ -107,7 +107,8 @@ function Clear-Cache {
     )
 
     $cutoff = (Get-Date).AddDays(-$OlderThanDays)
-    $roots = @($env:TEMP, "$env:LOCALAPPDATA\Microsoft\Windows\INetCache")
+    # The profile Temp is listed too: WSL swap and some installers write there even when TEMP points elsewhere.
+    $roots = @($env:TEMP, "$env:LOCALAPPDATA\Temp", "$env:LOCALAPPDATA\Microsoft\Windows\INetCache")
     if ($isAdmin) { $roots += "$env:SystemRoot\Temp" } else { Write-Host "Skipping $env:SystemRoot\Temp (needs admin)." -ForegroundColor DarkGray }
 
     foreach ($root in $roots | Select-Object -Unique) {
